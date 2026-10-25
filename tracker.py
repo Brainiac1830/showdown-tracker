@@ -21,7 +21,6 @@ import argparse
 import asyncio
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -32,6 +31,7 @@ from pathlib import Path
 from cards import load_saved_decks, read_deck_file
 import profiles
 import website
+from browsers import find_browser
 from tournaments import TournamentIndex
 from game_state import Game
 
@@ -53,18 +53,9 @@ SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
 SAVE_ONLINE = True
 
-# Leave as None to search for Edge, then Chrome, then Brave.
-# Or put the full path, e.g. r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-BROWSER_PATH = None
-
-BROWSER_PLACES = [
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
-    r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
-]
+# Which browser opens the game: see browsers.py. To choose one, put its full path in
+# browser_path.txt next to this file, e.g.  C:\Program Files\Google\Chrome\Application\chrome.exe
+BROWSER_FILE = HERE / "browser_path.txt"
 
 
 # ----------------------------- saving -----------------------------
@@ -344,19 +335,6 @@ TOURNAMENT_HINTS = ("tournament", "findmatch", "matchstatus", "getgamedetails", 
 
 # ----------------------------- live (browser) -----------------------------
 
-def find_browser():
-    if BROWSER_PATH:
-        return BROWSER_PATH
-    for place in BROWSER_PLACES:
-        if os.path.exists(place):
-            return place
-    for name in ("msedge", "chrome", "brave"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return None
-
-
 def port_is_open(port):
     with socket.socket() as s:
         s.settimeout(0.5)
@@ -368,9 +346,10 @@ def start_browser():
     if port_is_open(DEBUG_PORT):
         print(f"A browser is already listening on port {DEBUG_PORT}, using it.")
         return
-    browser = find_browser()
+    browser = find_browser(BROWSER_FILE)
     if not browser:
-        sys.exit("Could not find Edge or Chrome. Put its path in BROWSER_PATH at the top of tracker.py.")
+        sys.exit("Could not find or download a browser to use. Put the full path of Edge, Chrome or Brave "
+                 "in browser_path.txt (next to tracker.py) and try again.")
     PROFILE_DIR.mkdir(exist_ok=True)
     print(f"Starting {Path(browser).name} ...")
     subprocess.Popen([

@@ -1,5 +1,8 @@
 # Showdown tracker (prototype)
 
+> **New here? Read [SETUP.md](SETUP.md)**: install in 10 minutes, then double-click `start.bat`.
+> This README is the detailed notes for the person maintaining the tracker.
+
 A deck tracker for **Showdown** (poker + action cards, https://play.showdown.game).
 
 Unlike the Origins tracker, it does **not** use screenshots. It reads the game's own
@@ -172,7 +175,11 @@ It works with a DevTools HAR export, `/catchup` answers pasted one per line, or 
 from `games\`. Add `--no-overlay` to only print the log.
 
 ## Settings (top of tracker.py)
-- `BROWSER_PATH`: leave `None` to find Edge automatically, or put the full path to Chrome.
+- **Browser:** found by itself (`browsers.py`): any Chrome-type browser (Edge, Chrome, Brave, Vivaldi,
+  Opera, Chromium), wherever it's installed. Firefox and Safari can't be used, but that doesn't matter: the
+  tracker always opens its own window. If no Chrome-type browser exists at all, it downloads Playwright's own
+  Chromium once (~150 MB). To pick one, put its full path in a file `browser_path.txt` next to `tracker.py`.
+  `python browsers.py` shows which one will be used.
 - `DEBUG_PORT`: 9222. Change it if another program uses that port.
 - `SHOW_OVERLAY`: `False` to never show the window.
 
