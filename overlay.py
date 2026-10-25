@@ -343,7 +343,7 @@ def online_status(d, y, game):
 # ---------- a player panel: the opponent (or either player when spectating) ----------
 
 def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent",
-                  tournament=None, tdeck=None, trophy_button=False, trophy_on=None):
+                  tournament=None, tdeck=None, trophy_button=False, trophy_on=None, warning=None):
     """Returns (picture, click zones). Click zones: {"prediction": (top, bottom)},
     and {"tournament": (left, top, right, bottom)} when this window has the trophy button.
     tdeck = what's known of their tournament deck (profiles.tournament_deck)."""
@@ -427,6 +427,9 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
             d.text((6, y), f"+ {len(rows) - len(shown)} more seen less often", font=SMALL, fill=DIM)
             y += 13
     zones["prediction"] = (top, top + 18)
+    if warning:          # e.g. "not linked: no shared data" (no tracker_key.txt)
+        d.text((6, y), fit(d, warning, SMALL, WIDTH - 12), font=SMALL, fill=LOSS)
+        y += 13
     return img.crop((0, 0, WIDTH, y + 4)), zones
 
 
@@ -597,8 +600,10 @@ class Overlay:
             return
         tournament = self.tournament(game)
         trophy_on = bool(self.tournament())      # the trophy shows the manual mode
+        status = getattr(self.recorder, "shared_status", "") or ""
+        warning = status if status.startswith(("not linked", "shared data: download failed")) else None
         key = (id(game), game.version if game else None, art_version[0], self.settings["prediction"], tournament,
-               trophy_on)
+               trophy_on, warning)
         if key == self._shown:
             return
         self._shown = key
@@ -613,9 +618,9 @@ class Overlay:
                                           tournament=tournament, tdeck=tdeck("P1"), trophy_button=True,
                                           trophy_on=trophy_on))
             self.right.draw(*render_player(game, "P2", self._prediction_for(game, "P2"), on,
-                                           tournament=tournament, tdeck=tdeck("P2")))
+                                           tournament=tournament, tdeck=tdeck("P2"), warning=warning))
         else:
             opp = game.opponent() if game else None
             self.left.draw(*render_my_side(game, tournament, trophy_on))
             self.right.draw(*render_player(game, opp, self._prediction_for(game, opp), on,
-                                           tournament=tournament, tdeck=tdeck(opp)))
+                                           tournament=tournament, tdeck=tdeck(opp), warning=warning))

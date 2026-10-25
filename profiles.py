@@ -32,7 +32,8 @@ def appearances(record):
         players = [{"name": record.get("opponent"), "classes": record.get("opponentClasses"),
                     "cards": record.get("opponentCards") or {}}]
     for p in players:
-        if p.get("name") and p.get("name") != "?":
+        # no name yet (left before the game showed it) = can't be used for anyone's profile
+        if p.get("name") and p.get("name") not in ("?", "P1", "P2"):
             yield {"name": p["name"], "classes": p.get("classes") or [], "cards": p.get("cards") or {},
                    "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
                    "tournament": record.get("tournament") or ""}

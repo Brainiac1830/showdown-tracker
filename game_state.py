@@ -650,7 +650,7 @@ class Game:
     def spectated_record(self):
         """A match I watched: both players, with the cards they played."""
         def player(pid):
-            return {"name": self.names.get(pid) or pid, "classes": self.deck_classes.get(pid, []),
+            return {"name": self.names.get(pid) or "", "classes": self.deck_classes.get(pid, []),
                     "chips": self.chips.get(pid, 0), "cards": dict(self.played[pid]),
                     "generated": dict(self.generated[pid])}
         # EndHand results are stored as "my" = P1 and "opponent" = P2 when nobody is "me"

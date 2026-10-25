@@ -216,7 +216,7 @@ def share_sightings(record, replace=False):
         return "sharing turned off"
     uid = read_key()["uid"]
     shared = skipped = 0
-    for a in appearances(record):
+    for a in appearances(record):          # (players without a known name are skipped there)
         name = a["name"][:40]
         fields = {
             "gameId": record["gameId"], "name": name, "nameKey": name.lower(),

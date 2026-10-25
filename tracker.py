@@ -49,6 +49,8 @@ SAVED_DECKS_FILE = SAVE_FOLDER / "decks" / "Decks_compact.json"
 SHARED_FILE = SAVE_FOLDER / "shared_sightings.json"
 # Tournament mode: the tournament you're in (set with the trophy button on the overlay)
 TOURNAMENT_FILE = HERE / "tournament_mode.json"
+# How often to download what other players shared (seconds)
+SYNC_EVERY = 120
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
 SAVE_ONLINE = True
@@ -78,6 +80,9 @@ class Recorder:
         # Earlier finished matches (games/*/record.json), for the "likely cards" prediction
         self.records = []
         self.shared = profiles.load_shared(SHARED_FILE)      # last download, works offline
+        self._syncing = False
+        # Shown in the overlay when something's wrong (no key = no shared data from others)
+        self.shared_status = "shared: ..." if self.save_online else "not linked: no shared data"
         self.tournament = load_tournament_mode()        # the manual trophy name
         # Tournament brackets seen in the game: detect tournament matches by themselves
         self.tournament_index = TournamentIndex(SAVE_FOLDER / "tournaments")
@@ -125,15 +130,26 @@ class Recorder:
                                         sightings=self.shared)
 
     def sync_shared(self):
-        """Download new shared sightings, in the background."""
+        """Download new shared sightings, in the background (one download at a time).
+        Called at start, when a match starts or ends, and every few minutes."""
+        if not self.save_online or self._syncing:
+            return
+        self._syncing = True
+
         def work():
             try:
+                before = len(self.shared)
                 self.shared = website.sync_sightings(SHARED_FILE)
-                print(f"Shared player data: {len(self.shared)} sightings")
-                if self.game is not None:
-                    self.game.version += 1      # redraw the prediction
+                self.shared_status = f"shared: {len(self.shared)}"
+                if len(self.shared) != before:
+                    print(f"Shared player data: {len(self.shared)} sightings")
+                    if self.game is not None:
+                        self.game.version += 1      # redraw the prediction
             except Exception as error:
+                self.shared_status = "shared data: download failed"
                 print(f"(Couldn't download the shared player data: {error})")
+            finally:
+                self._syncing = False
         threading.Thread(target=work, daemon=True).start()
 
     def _start_game(self, game_id):
@@ -145,6 +161,7 @@ class Recorder:
         self.folder.mkdir(parents=True, exist_ok=True)
         self._lines_written = 0
         print(f"\nNew match {game_id}  ->  saving in {self.folder}")
+        self.sync_shared()      # get what others shared since last time, before predictions are needed
 
     def _write_raw(self, kind, data):
         with open(self.folder / "raw.jsonl", "a", encoding="utf-8") as f:
@@ -432,11 +449,15 @@ async def run_live(show_overlay):
             from overlay import Overlay
             overlay = Overlay(on_quit=stop.set, predict=recorder.predict, recorder=recorder)
 
+        next_sync = time.time() + SYNC_EVERY
         try:
             while not stop.is_set():
                 if overlay:
                     overlay.show(recorder.game)
                     overlay.update_window()
+                if time.time() > next_sync:      # what other players shared meanwhile
+                    recorder.sync_shared()
+                    next_sync = time.time() + SYNC_EVERY
                 await asyncio.sleep(0.05)  # this pause is when browser messages get handled
         except KeyboardInterrupt:
             pass
