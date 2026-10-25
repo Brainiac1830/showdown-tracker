@@ -305,16 +305,21 @@ def upload_all(replace=False):
     for raw in folders:
         game = replay_game(raw)
         name = raw.parent.name
-        if game is None or not game.ended:
-            print(f"  {name}: not finished, skipped")
+        if game is None or not (game.ended or game.anything_seen()):
+            print(f"  {name}: nothing seen, skipped")
             continue
         try:
             record = game.website_record()
             save_record(raw.parent, record)          # keep the local copy the same (used for predictions)
-            saved = save_match(record, replace)
             players = " vs ".join(a["name"] for a in appearances(record))
-            print(f"  {name}: {'saved' if saved else 'already online'} ({game.result_word()}: {players})"
-                  f" - {share_sightings(record, replace)}")
+            if game.ended or game.spectating:
+                saved = save_match(record, replace)
+                what = "saved" if saved else "already online"
+            else:
+                what = "left early, not saved (no result)"   # my own match: only the opponent is shared
+            if not game.ended and game.spectating:
+                what += " (left early)"
+            print(f"  {name}: {what} ({game.result_word()}: {players}) - {share_sightings(record, replace)}")
         except RuntimeError as error:
             print(f"  {name}: not saved - {error}")
 

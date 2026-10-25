@@ -195,9 +195,11 @@ class Recorder:
 
         def work():
             try:
-                saved = website.save_match(record)
-                game.online_status = "Saved to website ✓" if saved else "Already on the website ✓"
-                print(f"{game.online_status} ({website.share_sightings(record)})")
+                # replace=True: if I left this match earlier and came back, the full
+                # version replaces the partial one saved when I left
+                website.save_match(record, replace=True)
+                game.online_status = "Saved to website ✓"
+                print(f"{game.online_status} ({website.share_sightings(record, replace=True)})")
             except Exception as error:
                 game.online_status = f"Not saved online: {error}"
                 print(game.online_status)
@@ -233,11 +235,38 @@ class Recorder:
         if not quiet:
             print(f"Saved {self.folder / 'summary.json'}  (result: {self.game.result_word()})")
 
-    def finish(self):
-        """Save whatever we have (called on a new match and when quitting)."""
-        if self.game is not None:
-            self._write_new_log_lines()
-            self.save_summary()
+    def finish(self, wait=False):
+        """Save whatever we have (called when a new match starts and when quitting).
+        A match left before the end still counts for what was seen:
+          - watched match: saved online as "left early", both players shared
+          - my own match: only the opponent is shared (no result, so my stats don't change)
+        wait=True (quitting): upload now instead of in the background."""
+        if self.game is None:
+            return
+        self._write_new_log_lines()
+        self.save_summary()
+        game = self.game
+        if game.ended or not game.anything_seen():
+            return
+        record = game.website_record()          # has "leftEarly": True
+        save_record(self.folder, record)          # local copy: counts for predictions
+        self.records = [r for r in self.records if r.get("gameId") != record["gameId"]] + [record]
+        print(f"Left before the end: {self.folder.name} kept for what was seen")
+        if self.save_online:
+            self.upload_left_early(record, wait)
+
+    def upload_left_early(self, record, wait=False):
+        def work():
+            try:
+                if record.get("spectated"):
+                    website.save_match(record, replace=True)
+                print(f"  (left early: {website.share_sightings(record, replace=True)})")
+            except Exception as error:
+                print(f"  (left early, not saved online: {error})")
+        if wait:
+            work()
+        else:
+            threading.Thread(target=work, daemon=True).start()
 
 
 def load_tournament_mode():
@@ -263,7 +292,8 @@ def backfill_records():
         if folder.name.startswith(("replay_", "test_")) or (folder / "record.json").exists():
             continue
         game = replay_game(raw)
-        if game is not None and game.ended:
+        # finished, or left early with cards seen (those still count for predictions)
+        if game is not None and (game.ended or game.anything_seen()):
             save_record(folder, game.website_record())
 
 
@@ -432,7 +462,7 @@ async def run_live(show_overlay):
         except KeyboardInterrupt:
             pass
         finally:
-            recorder.finish()
+            recorder.finish(wait=True)     # quitting: upload a match left early before closing
             if overlay:
                 overlay.quit()
         # We only disconnect: the browser window stays open.

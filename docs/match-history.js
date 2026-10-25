@@ -100,7 +100,7 @@ function createRow(match) {
     };
     row.innerHTML = `
       <div class="match-main">
-        <span class="match-result">${RESULT_WORDS.spectated}</span>
+        <span class="match-result">${RESULT_WORDS.spectated}${match.leftEarly ? `<br><span class="dim small">left early</span>` : ""}</span>
         <span class="match-deck">${nameHtml(p1)}<br>${classTags(p1.classes)}</span>
         <span class="match-enemy"><span class="dim small">vs</span> ${nameHtml(p2)}<br>${classTags(p2.classes)}</span>
         <span class="match-score" title="Final chips">${p1.chips ?? "?"} – ${p2.chips ?? "?"}</span>
@@ -156,7 +156,7 @@ function spectatedDetailsHtml(match) {
   };
   const [p1, p2] = match.players || [{}, {}];
   return `
-    <p class="details-title">Hands (from when I started watching)</p>
+    <p class="details-title">Hands (while I was watching${match.leftEarly ? ": I left before the end" : ""})</p>
     ${hands}
     <div class="details-columns" style="margin-top: 12px">${column(p1)}${column(p2)}</div>
     <div class="details-footer">

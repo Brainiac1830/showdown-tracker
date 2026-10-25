@@ -149,6 +149,10 @@ class Game:
             self.say("Not spectating after all: you made a move")
         self.set_me(move.get("playerId"), "from a move you sent")
 
+    def anything_seen(self):
+        """True if we saw at least one card played (worth keeping when leaving early)."""
+        return any(self.played[p] or self.generated[p] for p in ("P1", "P2"))
+
     def detect_tournament(self, index):
         """Look this match up in the tournament brackets (tournaments.py). A detected
         tournament replaces the manual trophy name. Returns True if something changed."""
@@ -640,6 +644,7 @@ class Game:
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
             "tournament": self.tournament or "",
+            "leftEarly": not self.ended,                # left before the end: no result
         }
 
     def spectated_record(self):
@@ -657,6 +662,7 @@ class Game:
             "winner": self.names.get(self.winner) or "",
             "players": [player("P1"), player("P2")],
             "tournament": self.tournament or "",
+            "leftEarly": not self.ended,                # stopped watching before the end
             "hands": [{"hand": h["hand"] or "", "winner": self.names.get(h["winner"]) or "split",
                        "p1Hand": h["myHand"] or "", "p2Hand": h["opponentHand"] or ""}
                       for h in self.hand_results],

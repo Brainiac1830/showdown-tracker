@@ -367,29 +367,31 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
         y = online_status(d, y, game)
 
     # ----- this match -----
-    y = played_sections(img, d, y, game.played[pid])
-    y = generated_section(img, d, y, game.generated[pid])
-
-    # ----- tournament deck: cards KNOWN to be in their deck (decks are locked) -----
-    # count = copies they still have this match
     known = {}
-    if tournament:
-        if tdeck is None:
-            y = section_title(d, y + 2, "TOURNAMENT DECK", TOURNEY, "not seen yet")
-        else:
-            known = tdeck["cards"]
-            n = tdeck["matches"]
-            y = section_title(d, y + 2, "TOURNAMENT DECK", TOURNEY,
-                              f"{tdeck['known']}/30 · {n} match{'es' if n != 1 else ''}")
-            groups = group_by_stage(known)
-            for stage in STAGES:
-                rows = groups.get(stage) or []
-                for card, copies in rows:
-                    left_n = max(0, copies - game.played[pid][card["id"]])
-                    card_row(img, d, y, card, str(left_n), gone=left_n == 0)
-                    y += ROW + ROW_GAP
-                if rows:
-                    y += STAGE_GAP
+    if not tournament:
+        # ----- this match: what they played (count = times) -----
+        y = played_sections(img, d, y, game.played[pid])
+    else:
+        # ----- tournament: ONE list. Decks are locked, so every card played this match
+        # is in their deck too: known deck + new cards from this match.
+        # count = copies they still have this match (0 = grey)
+        earlier = tdeck["cards"] if tdeck else {}
+        played_now = game.played[pid]
+        known = {c: max(earlier.get(c, 0), played_now[c]) for c in set(earlier) | set(played_now)}
+        n = tdeck["matches"] if tdeck else 0
+        info = f"{sum(known.values())}/30 · " + (f"{n} earlier match{'es' if n != 1 else ''}" if n else "first time seen")
+        y = section_title(d, y, "TOURNAMENT DECK", TOURNEY, info)
+        groups = group_by_stage(known)
+        for stage in STAGES:
+            rows = groups.get(stage) or []
+            for card, copies in rows:
+                left_n = max(0, copies - played_now[card["id"]])
+                card_row(img, d, y, card, str(left_n), gone=left_n == 0)
+                y += ROW + ROW_GAP
+            if rows:
+                y += STAGE_GAP
+    # generated cards (teal ✦): never part of the deck, so always after it
+    y = generated_section(img, d, y, game.generated[pid])
 
     # ----- likely cards (from earlier matches): a guess, NOT their decklist -----
     y += 2

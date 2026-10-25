@@ -152,6 +152,13 @@ and sharing doesn't work yet).
    Expected: one "saved ... - shared N player(s)" line per match, then `Linked ✓ ... N Showdown matches online`
    and `Shared player data: ...`.
 
+### Leaving a match before the end
+What you saw still counts. When the next match starts (or you close the tracker):
+- a **watched** match is saved as "Watched · left early", and both players are shared;
+- **your own** match isn't saved (no result, so your stats don't change), but your opponent is shared.
+Their cards count for LIKELY CARDS and tournament decks. If you come back and the match finishes,
+the full version replaces the partial one. `python website.py --upload-all` does the same for old folders.
+
 ### Every match after that
 When a match ends, the tracker saves it to the website by itself. The overlay shows
 **Saved to website ✓** under VICTORY / DEFEAT. (Turn it off with `SAVE_ONLINE = False` in `tracker.py`.)
