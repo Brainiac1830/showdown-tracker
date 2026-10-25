@@ -5,6 +5,8 @@
 //
 //   users/<your id>/showdown_matches/<game id>   one document per match
 //   users/<your id>/meta/lastChange              field "showdownMatches" = when they last changed
+//   showdown_sightings/<game id>_<player>          SHARED: what someone saw a player play
+//                                                  (see loadSightings, firestore.rules)
 //
 // The tracker (website.py) saves the matches; the site only reads them (and can delete one).
 //
@@ -21,7 +23,7 @@
 // Everything is downloaded again only when the tracker saved something since.
 // ============================================================
 
-import { collection, doc, getDoc, getDocs, deleteDoc, setDoc }
+import { collection, doc, getDoc, getDocs, deleteDoc, setDoc, query, where, orderBy, Timestamp }
   from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { db, auth, CACHE_PREFIX } from "./firebase.js";
 
@@ -93,4 +95,38 @@ export async function deleteMatch(id) {
     cached.stamp = null;     // reload next time, to be safe
     writeCache(cached);
   }
+}
+
+
+// ---------- Shared player sightings ----------
+// Everyone's trackers add what they saw other players play. We keep a copy in the
+// browser and only download the ones saved since last time (each download = 1 read,
+// so this stays cheap even with thousands of them).
+// One sighting: { gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by }
+function sightingsKey() {
+  return CACHE_PREFIX + uid() + "-sightings";
+}
+
+export async function loadSightings() {
+  let cached = null;
+  try {
+    cached = JSON.parse(localStorage.getItem(sightingsKey()));
+  } catch (error) { /* broken or blocked: download everything */ }
+  cached = cached || { last: 0, sightings: {} };
+
+  // ">=" because two sightings can share the same time; the id list removes repeats
+  const newOnes = await getDocs(query(collection(db, "showdown_sightings"),
+    where("savedAt", ">=", Timestamp.fromMillis(cached.last)), orderBy("savedAt")));
+  for (const d of newOnes.docs) {
+    const data = d.data();
+    const savedAt = data.savedAt ? data.savedAt.toMillis() : 0;
+    cached.sightings[d.id] = Object.assign({}, data, { savedAt: savedAt });
+    cached.last = Math.max(cached.last, savedAt);
+  }
+  try {
+    localStorage.setItem(sightingsKey(), JSON.stringify(cached));
+  } catch (error) {
+    console.warn("Couldn't save the local copy:", error);
+  }
+  return Object.values(cached.sightings);
 }

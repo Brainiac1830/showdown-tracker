@@ -44,6 +44,8 @@ SAVE_FOLDER = HERE / "games"
 DECK_FILE = HERE / "deck.txt"
 # Your decks, saved automatically when you open the game's deck screen
 SAVED_DECKS_FILE = SAVE_FOLDER / "decks" / "Decks_compact.json"
+# Everyone's shared player sightings, downloaded from the website (see website.py)
+SHARED_FILE = SAVE_FOLDER / "shared_sightings.json"
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
 SAVE_ONLINE = True
@@ -81,13 +83,28 @@ class Recorder:
         self._lines_written = 0
         # Earlier finished matches (games/*/record.json), for the "likely cards" prediction
         self.records = []
+        self.shared = profiles.load_shared(SHARED_FILE)      # last download, works offline
         if not folder_prefix:
             backfill_records()
             self.records = profiles.load_records(SAVE_FOLDER)
+            if self.save_online:
+                self.sync_shared()
 
     def predict(self, name, classes, game_id):
         """What this player played in earlier matches with these classes (see profiles.py)."""
-        return profiles.predict(self.records, name, classes, exclude_game=game_id)
+        return profiles.predict(self.records, name, classes, exclude_game=game_id, sightings=self.shared)
+
+    def sync_shared(self):
+        """Download new shared sightings, in the background."""
+        def work():
+            try:
+                self.shared = website.sync_sightings(SHARED_FILE)
+                print(f"Shared player data: {len(self.shared)} sightings")
+                if self.game is not None:
+                    self.game.version += 1      # redraw the prediction
+            except Exception as error:
+                print(f"(Couldn't download the shared player data: {error})")
+        threading.Thread(target=work, daemon=True).start()
 
     def _start_game(self, game_id):
         self.finish()  # save the previous match if there was one
@@ -139,10 +156,12 @@ class Recorder:
             try:
                 saved = website.save_match(record)
                 game.online_status = "Saved to website ✓" if saved else "Already on the website ✓"
+                print(f"{game.online_status} ({website.share_sightings(record)})")
             except Exception as error:
                 game.online_status = f"Not saved online: {error}"
-            print(game.online_status)
+                print(game.online_status)
             game.version += 1     # the overlay redraws
+            self.sync_shared()    # pick up what others shared meanwhile
 
         threading.Thread(target=work, daemon=True).start()
 

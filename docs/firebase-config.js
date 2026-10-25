@@ -1,23 +1,21 @@
 // ============================================================
-// firebase-config.js — the "address" of your Firebase project.
-// (The same project as the Origins website: one Google sign-in, one database.
-//  Showdown matches have their own folder, see database.js.)
-//
-// Replace the 6 placeholder values below with the ones Firebase gives you
-// (step 5, part B). Keep the quotes " " around each value.
+// firebase-config.js — the "address" of the Showdown Firebase project
+// ("showdown-tracker", separate from the Origins website since 2026-10-25).
 //
 // Is it safe to put this on GitHub? Yes. These values only tell the site
-// WHERE your database is. What protects your data is Google sign-in plus
-// the security rules (firestore.rules), which only let YOUR account in.
+// WHERE the database is. What protects the data is Google sign-in plus
+// the security rules (firestore.rules): your matches can only be read by you.
+//
+// website.py reads apiKey and projectId from this file too.
 // ============================================================
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 export const firebaseConfig = {
-  apiKey: "AIzaSyC6yp864qr2nU6DWB25i45_7743mxh7VgQ",
-  authDomain: "origins-tcg-41e96.firebaseapp.com",
-  projectId: "origins-tcg-41e96",
-  storageBucket: "origins-tcg-41e96.firebasestorage.app",
-  messagingSenderId: "332005188230",
-  appId: "1:332005188230:web:a4ddc8748e6a0687b36707",
-  measurementId: "G-XP8P8VVR0N"
+  apiKey: "AIzaSyDjxyiA81o6oGd5iH8pD6uai1k3uCKtknE",
+  authDomain: "showdown-tracker-87e50.firebaseapp.com",
+  projectId: "showdown-tracker-87e50",
+  storageBucket: "showdown-tracker-87e50.firebasestorage.app",
+  messagingSenderId: "180464462804",
+  appId: "1:180464462804:web:7422272b381cded6f64441",
+  measurementId: "G-93Z7ZDN4K7"
 };

@@ -419,6 +419,31 @@ h1 span { color: var(--yellow); }
 .match-row.result-spectated { border-left-color: #beaaff; }
 .result-spectated .match-result { color: #beaaff; font-size: 0.8rem; }
 
+/* ---------- Tools page ---------- */
+.key-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+}
+
+.steps li { margin-bottom: 6px; line-height: 1.5; }
+
+.text-link { color: var(--yellow); }
+
+code {
+  background-color: var(--panel-light);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: Consolas, monospace;
+}
+
 /* ---------- Small screens (phone) ---------- */
 @media (max-width: 700px) {
   .match-main {

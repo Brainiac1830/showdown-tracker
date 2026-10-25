@@ -1,6 +1,7 @@
 // ============================================================
 // players.js — the Players page.
-// Everyone you've played against or watched (spectated), most seen first.
+// Everyone you've played against or watched (spectated), plus the players other
+// people's trackers shared (showdown_sightings), most seen first.
 // Click a player to see, for each pair of classes they used, the cards they
 // played and in how many of those matches (%).
 //
@@ -10,7 +11,7 @@
 // ============================================================
 
 import { watchUser } from "./firebase.js";
-import { loadMatches } from "./database.js";
+import { loadMatches, loadSightings } from "./database.js";
 
 const pageStatus   = document.getElementById("page-status");
 const playerSearch = document.getElementById("player-search");
@@ -21,14 +22,34 @@ let players = [];     // one entry per player, see buildPlayers()
 
 // ---------- 1. FROM MATCHES TO PLAYERS ----------
 // Python equivalent: a dict  name.lower() -> {"name", "seen": [appearances...]}
-function buildPlayers(matches) {
-  const byName = {};
+// Each match counts once per player, even if several people shared it.
+function buildPlayers(matches, sightings) {
+  const all = {};                       // "<game id>|<name>" -> appearance
   for (const match of matches) {
     for (const a of appearances(match)) {
-      const key = a.name.toLowerCase();
-      byName[key] = byName[key] || { name: a.name, seen: [] };
-      byName[key].seen.push(a);
+      all[match.gameId + "|" + a.name.toLowerCase()] = a;
     }
+  }
+  for (const s of sightings) {
+    const id = s.gameId + "|" + (s.name || "").toLowerCase();
+    if (s.name && !all[id]) {
+      // shared by someone else: no result, not "mine"
+      all[id] = { name: s.name, classes: s.classes || [], cards: s.cards || {}, generated: {},
+                  shared: true, match: { gameId: s.gameId, playedAt: s.playedAt || 0, spectated: true } };
+    }
+  }
+  // My own names (from my matches): others share me as their opponent, but I don't need my own page
+  const myNames = new Set(matches.filter(function (m) { return m.myName; })
+    .map(function (m) { return m.myName.toLowerCase(); }));
+
+  const byName = {};
+  for (const a of Object.values(all)) {
+    const key = a.name.toLowerCase();
+    if (myNames.has(key)) {
+      continue;
+    }
+    byName[key] = byName[key] || { name: a.name, seen: [] };
+    byName[key].seen.push(a);
   }
   return Object.values(byName).map(function (p) {
     p.seen.sort(function (a, b) { return b.match.playedAt - a.match.playedAt; });   // newest first
@@ -37,7 +58,8 @@ function buildPlayers(matches) {
     const mine = p.seen.filter(function (a) { return !a.match.spectated; });
     p.wins = mine.filter(function (a) { return a.match.result === "win"; }).length;
     p.losses = mine.filter(function (a) { return a.match.result === "loss"; }).length;
-    p.watched = p.seen.length - mine.length;
+    p.shared = p.seen.filter(function (a) { return a.shared; }).length;     // seen by other people
+    p.watched = p.seen.length - mine.length - p.shared;                       // matches I watched
     return p;
   }).sort(function (a, b) { return b.seen.length - a.seen.length || b.lastSeen - a.lastSeen; });
 }
@@ -102,7 +124,7 @@ function createRow(p) {
     <div class="match-main player-main">
       <span class="match-name">${escapeHtml(p.name)}</span>
       <span class="small">${pairTags}</span>
-      <span class="small" title="My record against them">${record}${p.watched ? ` <span class="dim">· watched ${p.watched}</span>` : ""}</span>
+      <span class="small" title="My record against them">${record}${p.watched ? ` <span class="dim">· watched ${p.watched}</span>` : ""}${p.shared ? ` <span class="dim" title="Matches other players' trackers shared">· +${p.shared} shared</span>` : ""}</span>
       <span class="match-date dim small">${formatDate(p.lastSeen)}</span>
     </div>
     <div class="match-details hidden"></div>
@@ -132,8 +154,8 @@ function detailsHtml(p) {
       return `
         <div class="pair-block">
           <p class="details-title">${classTags(key.split(" / "))} ${n} match${n === 1 ? "" : "es"} · last ${formatDate(seen[0].match.playedAt)}</p>
-          <p class="guess-note">Likely cards, <b>not their decklist</b>: % = in how many of these ${n} matches they played it.
-            We only see played cards, so cards they run can still show a low %.</p>
+          <p class="guess-note">Likely cards, <b>not their decklist</b>: % = in how many of these ${n} matches they played it
+            (yours and shared by other players). We only see played cards, so cards they run can still show a low %.</p>
           <div class="card-list">${cards.map(function (c) { return cardBar(c.card, c.percent + "%", "guess"); }).join("")
             || `<p class="dim small">No cards seen yet</p>`}</div>
         </div>`;
@@ -153,8 +175,17 @@ watchUser(async function (user) {
   }
   pageStatus.textContent = "Loading your matches...";
   try {
-    players = buildPlayers(await loadMatches());
-    pageStatus.textContent = "";
+    const matches = await loadMatches();
+    let sightings = [];
+    try {
+      sightings = await loadSightings();
+      pageStatus.textContent = "";
+    } catch (error) {
+      // e.g. the database rules don't allow shared data yet: show my own players only
+      pageStatus.textContent = "Shared player data couldn't be loaded (" + error.code + "): showing your own matches only.";
+      console.error(error);
+    }
+    players = buildPlayers(matches, sightings);
     render();
   } catch (error) {
     pageStatus.textContent = "Couldn't load your matches: " + error.message;

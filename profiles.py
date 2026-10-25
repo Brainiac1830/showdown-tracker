@@ -3,7 +3,9 @@
 # (matches you played against them, and matches you spectated).
 #
 # Every finished match is kept as  games/<folder>/record.json  (the same data the
-# website gets, see Game.website_record()). From those we answer:
+# website gets, see Game.website_record()). Other players' trackers share what they
+# saw too ("sightings", see website.py), downloaded into games/shared_sightings.json.
+# From both together we answer:
 #   "GPPoker on Rebel / Protector: in how many of those matches did he play each card?"
 #
 # IMPORTANT: this is NOT his decklist. We only ever see the cards a player PLAYS
@@ -35,8 +37,23 @@ def appearances(record):
                    "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId")}
 
 
-def predict(records, name, classes, exclude_game=None):
-    """What this player played before with these classes.
+def all_appearances(records, sightings=()):
+    """My own matches + the shared sightings, each match counted once per player
+    (I may have shared my own sighting too, or someone else watched the same match)."""
+    found = {}
+    for r in records:
+        for a in appearances(r):
+            found[(a["gameId"], a["name"].lower())] = a
+    for s in sightings or ():
+        key = (s.get("gameId"), (s.get("name") or "").lower())
+        if s.get("name") and key not in found:
+            found[key] = {"name": s["name"], "classes": s.get("classes") or [], "cards": s.get("cards") or {},
+                          "playedAt": s.get("playedAt") or 0, "gameId": s.get("gameId")}
+    return list(found.values())
+
+
+def predict(records, name, classes, exclude_game=None, sightings=()):
+    """What this player played before with these classes (my matches + shared sightings).
     Returns None if we've never seen them with these classes, else
       {"matches": 5, "lastSeen": <ms>, "cards": [{"id", "seen": 4, "percent": 80, "most": 2}, ...]}
     seen = in how many of those matches they played it, most = most copies in one match.
@@ -44,8 +61,8 @@ def predict(records, name, classes, exclude_game=None):
     if not name:
         return None
     key = class_key(classes)
-    found = [a for r in records if r.get("gameId") != exclude_game for a in appearances(r)
-             if a["name"].lower() == name.lower() and class_key(a["classes"]) == key]
+    found = [a for a in all_appearances(records, sightings) if a["gameId"] != exclude_game
+             and a["name"].lower() == name.lower() and class_key(a["classes"]) == key]
     if not found:
         return None
     seen, most = Counter(), Counter()
@@ -71,3 +88,11 @@ def load_records(save_folder):
         except (OSError, json.JSONDecodeError):
             pass
     return records
+
+
+def load_shared(cache_file):
+    """The shared sightings downloaded last time (works without internet)."""
+    try:
+        return list(json.loads(Path(cache_file).read_text(encoding="utf-8"))["sightings"].values())
+    except (OSError, json.JSONDecodeError, KeyError):
+        return []

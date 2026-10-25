@@ -1,7 +1,7 @@
 // ============================================================
 // firebase.js — connects the site to Firebase and handles sign-in.
 // Every page loads this file. It:
-//   1. connects to the Firebase project (the same one as the Origins website)
+//   1. connects to the Firebase project (see firebase-config.js)
 //   2. shows a "Sign in with Google" button in the menu
 //   3. after you sign in, checks that the database lets you in
 //
@@ -102,7 +102,7 @@ async function checkDatabase(user) {
   } catch (error) {
     status.classList.add("error");
     status.title = error.code === "permission-denied"
-      ? "This Google account isn't on the player list (the email list in the Firestore rules)."
+      ? "The database refused this account (check the Firestore rules: firestore.rules)."
       : "Database error: " + error.message;
     console.error(error);
   }

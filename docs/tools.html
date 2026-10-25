@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tools | Showdown Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Showdown <span>Tracker</span></h1>
+  </header>
+
+  <!-- The menu. class="active" highlights the page you're on. -->
+  <nav class="main-nav">
+    <a href="index.html">Home</a>
+    <a href="match-history.html">Match History</a>
+    <a href="players.html">Players</a>
+    <a href="tools.html" class="active">Tools</a>
+    <!-- Sign in / sign out. Filled in by firebase.js -->
+    <div class="auth-area" id="auth-area"></div>
+  </nav>
+
+  <main>
+    <!-- ===== Link the tracker ===== -->
+    <div class="panel">
+      <h2 class="section-title">Link your deck tracker</h2>
+      <p class="small dim" id="key-signin">Sign in (top menu) to create your key.</p>
+      <div class="hidden" id="key-box">
+        <p class="small">The tracker on your PC uses this key to save your matches to your account.
+          Create it, then paste it into a file called <b>tracker_key.txt</b> in the tracker's folder.</p>
+        <p class="small dim">The key works like a password for your matches on this site (not your Google
+          account): keep it private and never share it or put it on GitHub.</p>
+        <div class="key-row">
+          <input type="text" class="text-input" id="tracker-key" readonly placeholder="Click Create key">
+          <button type="button" class="btn" id="key-create">Create key</button>
+          <button type="button" class="btn btn-outline hidden" id="key-copy">Copy</button>
+        </div>
+        <p class="small" id="key-message"></p>
+      </div>
+    </div>
+
+    <!-- ===== How to get the tracker ===== -->
+    <div class="panel">
+      <h2 class="section-title">Get the tracker (Windows)</h2>
+      <ol class="small steps">
+        <li>Install <b>Python</b> from python.org (tick "Add python.exe to PATH" during the install).</li>
+        <li>Download the tracker: on
+          <a class="text-link" href="https://github.com/Brainiac1830/showdown-tracker" target="_blank" rel="noopener">github.com/Brainiac1830/showdown-tracker</a>
+          click <b>Code &gt; Download ZIP</b>, and unzip it anywhere.</li>
+        <li>Open a terminal in that folder and run: <code>python -m pip install playwright pillow</code></li>
+        <li>Create your key above and save it as <b>tracker_key.txt</b> in that folder.</li>
+        <li>Run <code>python tracker.py</code>. A browser window opens on Showdown: log in there and play.
+          Your matches appear on this site, and the players you meet are shared with everyone (Players page).</li>
+      </ol>
+    </div>
+
+    <!-- ===== What's shared ===== -->
+    <div class="panel">
+      <h2 class="section-title">What's shared with other players</h2>
+      <p class="small">Your <b>match history</b> is private: only you can see it.</p>
+      <p class="small">What you <b>saw other players play</b> (their name, classes, and the cards they played in that
+        match) is shared, so everyone gets better "likely cards" on the Players page and in the overlay.
+        Your own deck is never shared by your tracker.</p>
+    </div>
+  </main>
+
+  <script src="cards.js"></script>
+  <script src="common.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="tools.js"></script>
+</body>
+
+</html>

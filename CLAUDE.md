@@ -12,7 +12,8 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 ## Files
 - `tracker.py`: starts Edge with `--remote-debugging-port=9222` and its own profile (`browser-profile/`), connects with Playwright `connect_over_cdp`, listens to `/catchup` responses (game events) and `/moves` requests (my moves), saves deck messages (`/api/Decks/compact` = my decks) to `games/decks/`. Writes `games/<date>_<id>/raw.jsonl, log.txt, summary.json`. Auto-saves finished matches online (`SAVE_ONLINE`). `--replay FILE` re-runs a saved file; `replay_game()` rebuilds a Game.
 - `game_state.py`: the Game class (all game logic, incl. spectating). `overlay.py`: two Pillow-drawn tkinter windows (left my deck, right opponent + LIKELY CARDS; spectating: P1 / P2), settings in `overlay_settings.json` (gitignored). `profiles.py`: player profiles / predictions from `games/*/record.json` (written when a match ends; `backfill_records()` rebuilds missing ones). `cards.py`: card list, deck files, `GENERATORS`, `max_copies`. `update_cards.py`: rebuilds `cards.json` + `docs/cards.js` from the game's `card-faces.catalog-*.js` script.
-- `website.py`: Firestore REST save to `users/<uid>/showdown_matches/<gameId>` (+ `meta/lastChange.showdownMatches`), using `tracker_key.txt` (same key as Origins). `--upload-all` uploads old matches.
+- `website.py`: Firestore REST save to `users/<uid>/showdown_matches/<gameId>` (+ `meta/lastChange.showdownMatches`), using `tracker_key.txt` (made on the site's Tools page). `share_sightings()` adds `showdown_sightings/<gameId>_<name>` (opponents / both spectated players, never my own deck; create-only, `SHARE_PLAYERS`). `sync_sightings()` downloads new ones (savedAt >= last) into `games/shared_sightings.json`. `--upload-all [--replace]`.
+- `firestore.rules`: anyone signed in; private `users/<uid>/**`; shared `showdown_sightings` (read all, create own with validated fields + savedAt == request.time, update/delete only own).
 - `docs/`: the website (GitHub Pages from `/docs`): `index.html/home.js`, `match-history.*`, `database.js`, `firebase.js`, `common.js` (card bars), `cards.js` (generated).
 - `.gitignore`: browser-profile/, games/, art/, tracker_key.txt. **Never commit or print tracker_key.txt.**
 
@@ -23,12 +24,13 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 - Generated cards: `AnimateCard` with `Info.animationId == "generatedCard"` on the card id = the lighter border, sent to **both** players (found 2026-10-25; matched every generated card in 10 matches). My own cards also have `Slots: [{"Type":"Generated"}]`. The class rule and "maybe" guesses were removed. Backcheck by copy limit (Rare 1, Common 2) stays. Opponent's held generated count = hand arrivals − deck draws.
 - My deck = the saved deck whose 2 classes match the match (`pick_deck`).
 - Spectating: `viewerRole` 2 (players are 0 = P1, 1 = P2). Snapshot of a joined-midway match has `SetGameLogItems` with the whole log so far + named discard/cast cards; hand results only from joining on. Spectated website record: `{spectated: true, result: "spectated", winner, players: [{name, classes, chips, cards, generated}], hands: [{hand, winner, p1Hand, p2Hand}]}`.
-- Website pages: Home (own matches only), Match History (filter "Watched matches"), Players (`players.js`, same % logic as `profiles.predict`).
+- Website pages: Home (own matches only), Match History (filter "Watched matches"), Players (`players.js`: own matches + shared sightings via `loadSightings()` incremental cache, same % logic as `profiles.predict`, hides my own names), Tools (Create key, setup steps for others).
 
 ## Testing
 - `python tracker.py --replay games\<folder>\raw.jsonl --no-overlay` (regression check on real matches).
 - Website: copy `docs` to a temp folder, replace `firebase.js`/`database.js` with stubs that return `website_record()`s, serve with `python -m http.server`, check in the browser pane.
 
 ## Status (2026-10-25)
+- Opening to everyone: code done (rules, Tools page, sharing, Players merge), tested with fakes/stubs only. **Waiting on Olivier to create the separate Firebase project `showdown-tracker`** (README > One-time setup), then new firebase-config.js values, new key, `--upload-all`. Until then the site still points at the Origins project.
 - Website published (GitHub repo Brainiac1830/showdown-tracker, public, Pages from `/docs`); key copied; 7 matches uploaded. `python website.py --upload-all --replace` re-saves old matches after tracker logic changes.
 - Rules question: unclear if Showdown's terms allow trackers (real money). Advised: check ToS / ask them, use in free matches until then, no cross-match opponent profiles in the overlay.

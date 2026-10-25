@@ -1,19 +1,19 @@
 # ============================================================
 # website.py - saves a finished match to your Showdown website (Firebase).
 #
-# It uses the same "tracker key" as the Origins tracker (same Firebase project,
-# same Google account). Copy  origins-tracker/tracker-app/tracker_key.txt
-# into this folder. That file is your login for the website's data: keep it
-# private (.gitignore stops it going to GitHub).
+# It uses your "tracker key": create it on the website (Tools page) and save it
+# as tracker_key.txt in this folder. That file is your login for the website's
+# data: keep it private (.gitignore stops it going to GitHub).
 #
 # A save:
 #   1. writes the match to  users/<you>/showdown_matches/<game id>
 #      (the game id is the document's name, so a match can't be saved twice)
 #   2. updates  users/<you>/meta/lastChange  field "showdownMatches",
 #      so the website downloads your matches again
+#   3. shares the players you saw (share_sightings), for everyone's "likely cards"
 #
 # Commands:
-#   python website.py                test the link (reads, saves nothing)
+#   python website.py                test the link and download the shared player data
 #   python website.py --upload-all   save every finished match in games\ that isn't online yet
 #   python website.py --upload-all --replace
 #                                    same, but also re-save the matches already online
@@ -124,6 +124,20 @@ def doc_name(path):
     return f"projects/{firebase_config()['projectId']}/databases/(default)/documents/{path}"
 
 
+def from_value(value):
+    """Firestore's typed value -> Python value (the opposite of to_value)."""
+    kind, inner = next(iter(value.items()))
+    if kind == "integerValue":
+        return int(inner)
+    if kind == "arrayValue":
+        return [from_value(v) for v in inner.get("values", [])]
+    if kind == "mapValue":
+        return {k: from_value(v) for k, v in inner.get("fields", {}).items()}
+    if kind == "nullValue":
+        return None
+    return inner                               # strings, numbers, booleans, timestamps (as text)
+
+
 def to_value(value):
     """Python value -> Firestore's typed value, e.g. "Roo" -> {"stringValue": "Roo"}"""
     if value is None:
@@ -171,6 +185,93 @@ def save_match(record, replace=False):
         return False
 
 
+# ---------- 3b. SHARED PLAYER SIGHTINGS ----------
+# What we saw other players play, shared with everyone who uses the site:
+#   showdown_sightings/<game id>_<player name>  =
+#   {gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by}
+# Only opponents (and both players of a spectated match): my own deck is never shared.
+# The rules (firestore.rules) let everyone read and add them; only the one who
+# added a sighting can change it.
+
+SIGHTINGS = "showdown_sightings"
+SHARE_PLAYERS = True          # False = never share what you saw (you still get everyone else's)
+
+
+def sighting_id(game_id, name):
+    """<game id>_<name>, with only safe letters (a document name can't contain "/")."""
+    return f"{game_id}_{re.sub(r'[^a-z0-9_-]', '_', name.lower())[:40]}"
+
+
+def share_sightings(record, replace=False):
+    """Shares the players seen in this match. Returns a short text for the log.
+    A sighting someone else already shared (e.g. you both watched the same match) is skipped."""
+    from profiles import appearances, class_key      # here: profiles is only needed for this
+    if not SHARE_PLAYERS:
+        return "sharing turned off"
+    uid = read_key()["uid"]
+    shared = skipped = 0
+    for a in appearances(record):
+        name = a["name"][:40]
+        fields = {
+            "gameId": record["gameId"], "name": name, "nameKey": name.lower(),
+            "classes": list(a["classes"])[:2], "classKey": class_key(a["classes"]),
+            "cards": {card: n for card, n in a["cards"].items() if n > 0},
+            "playedAt": int(a["playedAt"]), "by": uid,
+        }
+        write = {"update": {"name": doc_name(f"{SIGHTINGS}/{sighting_id(record['gameId'], name)}"),
+                            "fields": {k: to_value(v) for k, v in fields.items()}},
+                 "updateTransforms": [{"fieldPath": "savedAt", "setToServerValue": "REQUEST_TIME"}]}
+        if not replace:
+            write["currentDocument"] = {"exists": False}
+        try:
+            request(f"{documents_url()}:commit", {"writes": [write]}, token=id_token())
+            shared += 1
+        except AlreadySaved:
+            skipped += 1
+        except RuntimeError as error:
+            if "403" in str(error) or "PERMISSION_DENIED" in str(error):
+                skipped += 1          # shared by someone else: only they can change it
+            else:
+                raise
+    return f"shared {shared} player(s)" + (f", {skipped} already shared" if skipped else "")
+
+
+def sync_sightings(cache_file):
+    """Downloads the shared sightings that are new since last time into cache_file
+    (a JSON file), and returns all of them as a list. Only new ones count as reads,
+    so this stays cheap however many there are."""
+    cache_file = Path(cache_file)
+    try:
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        cache = {"last": None, "sightings": {}}
+    while True:
+        query = {"structuredQuery": {
+            "from": [{"collectionId": SIGHTINGS}],
+            "orderBy": [{"field": {"fieldPath": "savedAt"}, "direction": "ASCENDING"}],
+            "limit": 300}}
+        if cache["last"]:
+            # ">=" and not ">": two sightings can have the same time; the dict removes repeats
+            query["structuredQuery"]["where"] = {"fieldFilter": {
+                "field": {"fieldPath": "savedAt"}, "op": "GREATER_THAN_OR_EQUAL",
+                "value": {"timestampValue": cache["last"]}}}
+        rows = request(f"{documents_url()}:runQuery", query, token=id_token())
+        docs = [row["document"] for row in rows if "document" in row]
+        new = 0
+        for d in docs:
+            doc_id = d["name"].split("/")[-1]
+            data = {k: from_value(v) for k, v in d.get("fields", {}).items()}
+            if doc_id not in cache["sightings"] or cache["sightings"][doc_id].get("savedAt") != data.get("savedAt"):
+                new += 1
+            cache["sightings"][doc_id] = data
+            cache["last"] = data.get("savedAt") or cache["last"]
+        if len(docs) < 300 or new == 0:
+            break
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(json.dumps(cache), encoding="utf-8")
+    return list(cache["sightings"].values())
+
+
 def count_saved():
     """How many Showdown matches are online (only reads their names)."""
     uid = read_key()["uid"]
@@ -190,6 +291,7 @@ def upload_all(replace=False):
     """Replays every match folder in games\\ and saves the finished ones
     (replace=True: also re-save the ones already online)."""
     from tracker import SAVE_FOLDER, replay_game     # here, not at the top: tracker.py imports this file
+    from profiles import appearances
     folders = sorted(p for p in SAVE_FOLDER.glob("*/raw.jsonl")
                      if not p.parent.name.startswith(("replay_", "test_")))
     for raw in folders:
@@ -199,21 +301,25 @@ def upload_all(replace=False):
             print(f"  {name}: not finished, skipped")
             continue
         try:
-            saved = save_match(game.website_record(), replace)
-            print(f"  {name}: {'saved' if saved else 'already online'} "
-                  f"({game.result_word()} vs {game.name(game.opponent())})")
+            record = game.website_record()
+            saved = save_match(record, replace)
+            players = " vs ".join(a["name"] for a in appearances(record))
+            print(f"  {name}: {'saved' if saved else 'already online'} ({game.result_word()}: {players})"
+                  f" - {share_sightings(record, replace)}")
         except RuntimeError as error:
             print(f"  {name}: not saved - {error}")
 
 
 if __name__ == "__main__":
     if not is_linked():
-        print(f"Not linked yet: copy tracker_key.txt from the Origins tracker into {HERE}")
+        print(f"Not linked yet: create a key on the website (Tools page) and save it as {KEY_FILE}")
         sys.exit(1)
     try:
         if "--upload-all" in sys.argv:
             print("Uploading finished matches from games\\ ...")
             upload_all(replace="--replace" in sys.argv)
         print(f"Linked ✓  ({read_key().get('email', '?')}) - {count_saved()} Showdown matches online")
+        shared = sync_sightings(HERE / "games" / "shared_sightings.json")
+        print(f"Shared player data: {len(shared)} sightings of {len({s.get('nameKey') for s in shared})} players")
     except Exception as error:
         print("The link didn't work:", error)

@@ -93,39 +93,44 @@ The match is saved in `games\<date>_<game id>\`:
 
 ## Website (match history)
 Site: https://brainiac1830.github.io/showdown-tracker/ (files in `docs\`).
-It uses the **same Firebase project and Google sign-in as the Origins website**, so there's nothing
-new to set up in Firebase. Showdown matches are kept apart in `users/<you>/showdown_matches`.
+**Anyone can sign in with Google.** Each person's match history is private; what their trackers
+saw other players play is **shared** (Players page + overlay "likely cards").
 
 - **Home**: record, win rate, win rate per deck, per opponent class pair, opponent cards seen most.
-- **Match History**: every match (search a player, filter by deck / result; "Watched matches" = spectated). Click a match for each
-  hand's result, your starting hand, and the cards both of you played (stage colours, ✦ = generated).
-- **Players**: everyone you played or watched: record against them, class pairs used, and per class
-  pair their likely cards with % (same numbers as the overlay, same "not their decklist" warning).
+- **Match History**: every match (search a player, filter by deck / result; "Watched matches" = spectated).
+- **Players**: everyone you played or watched + players others shared. Per class pair: likely cards with %.
+- **Tools**: create your tracker key, and steps for other players to get the tracker.
 
-### Spectating
-Spectate a match in the tracker's Edge window: it's recorded like your own matches, with both
-players tracked (only played cards are visible). Joining halfway is fine: the game sends the log so far.
-Watched matches are saved to the website too, but don't count in your own stats.
+### Data (Firebase project "showdown-tracker")
+- `users/<uid>/showdown_matches/<game id>`: your matches (only you can read them).
+- `showdown_sightings/<game id>_<player>`: shared. One per player per match: name, classes, cards played.
+  Everyone signed in can read them and add new ones; only the one who added one can change it.
+  Your own deck is never shared by your tracker. Set `SHARE_PLAYERS = False` in `website.py` to stop sharing.
+- Rules: `firestore.rules` (paste into Firebase > Firestore Database > Rules > Publish).
 
-### One-time setup
-1. **Copy the tracker key.** Copy `tracker_key.txt` from
-   `C:\Users\Brainiac\Documents\GitHub\origins-tracker\tracker-app\` into this folder
-   (same Google account and database, so the same key works). Never commit or share it.
-2. **Test the link** (reads only):
-   ```
-   python website.py
-   ```
-   Expected: `Linked ✓  (your email) - 0 Showdown matches online`
-3. **Upload your earlier matches** (each one only once, finished matches only):
+### One-time setup: the separate Firebase project
+Until this is done, the site still uses the Origins Firebase project (sign-in limited to the Origins player list,
+and sharing doesn't work yet).
+1. Go to https://console.firebase.google.com > **Create a project** > name `showdown-tracker` >
+   Google Analytics **off** > **Create**.
+2. Left menu **Build > Authentication** > **Get started** > **Google** > **Enable** > pick your email
+   as support email > **Save**. Then **Settings** tab > **Authorized domains** > **Add domain** >
+   `brainiac1830.github.io`.
+3. **Build > Firestore Database** > **Create database** > location: one close to you
+   (e.g. `northamerica-northeast1 (Montréal)`) > **Start in production mode** > **Create**.
+   Then the **Rules** tab: delete everything, paste all of `firestore.rules`, **Publish**.
+4. **Project settings** (gear, top left) > **General** > **Your apps** > the **</>** (Web) button >
+   nickname `showdown-site` > **Register app** (no Hosting). Copy the 7 values of `firebaseConfig`
+   into `docs\firebase-config.js` (or paste them in the chat and ask Claude to do it).
+5. Commit and push (VS Code Source Control). Wait 1 minute, open the site, **Ctrl+F5**, sign in.
+6. **Tools** page > **Create key** > **Copy**, and replace everything in `tracker_key.txt` with it
+   (the old key belongs to the Origins project).
+7. Move your matches and share what you've seen:
    ```
    python website.py --upload-all
    ```
-4. **Put the site on GitHub** (VS Code):
-   - Open this folder in VS Code. Left bar: **Source Control** > **Publish to GitHub** >
-     choose **public** (GitHub Pages is free for public repositories) > name it `showdown-tracker`.
-     Check the file list first: `games`, `browser-profile`, `art` and `tracker_key.txt` must NOT be in it.
-   - On github.com, open the repository > **Settings** > **Pages** > Source: **Deploy from a branch**,
-     Branch: **main**, folder: **/docs** > **Save**. About 1 minute later the site is live.
+   Expected: one "saved ... - shared N player(s)" line per match, then `Linked ✓ ... N Showdown matches online`
+   and `Shared player data: ...`.
 
 ### Every match after that
 When a match ends, the tracker saves it to the website by itself. The overlay shows

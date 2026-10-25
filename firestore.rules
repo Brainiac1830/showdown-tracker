@@ -1,0 +1,50 @@
+// ============================================================
+// firestore.rules — who is allowed to read and change what (Showdown project).
+//
+// This file is a copy for your records. The rules that count are the ones on
+// the Firebase website:  Firestore Database > Rules tab > paste all of this > Publish
+//
+//   - Anyone can sign in with Google.
+//   - Your matches (users/<you>/...) can only be read and changed by you.
+//   - Player sightings (showdown_sightings) are shared: every signed-in player can
+//     read them all and add new ones, but only the one who added a sighting can
+//     change or delete it.
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    // ---- Each player's private folder: matches, "last changed" stamp ----
+    match /users/{userId}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    // ---- Shared: what each player played in one match (one document per player per match) ----
+    // Document name: <game id>_<player name in lower case>, so the same match is only stored once.
+    function validSighting() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(["gameId", "name", "nameKey", "classes", "classKey", "cards", "playedAt", "savedAt", "by"])
+        && d.by == request.auth.uid                      // you can only add sightings as yourself
+        && d.gameId is string && d.gameId.size() <= 64
+        && d.savedAt == request.time                     // saved "now" (by the server's clock)
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && d.nameKey == d.name.lower()
+        && d.classes is list && d.classes.size() <= 2
+        && d.classKey is string && d.classKey.size() <= 40
+        && d.cards is map && d.cards.size() <= 40
+        && d.playedAt is int;
+    }
+
+    match /showdown_sightings/{sightingId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validSighting();
+      allow update: if signedIn() && validSighting() && resource.data.by == request.auth.uid;
+      allow delete: if signedIn() && resource.data.by == request.auth.uid;
+    }
+  }
+}
