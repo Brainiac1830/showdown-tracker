@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Showdown Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Showdown <span>Tracker</span></h1>
+  </header>
+
+  <!-- The menu. class="active" highlights the page you're on. -->
+  <nav class="main-nav">
+    <a href="index.html" class="active">Home</a>
+    <a href="match-history.html">Match History</a>
+    <!-- Sign in / sign out. Filled in by firebase.js -->
+    <div class="auth-area" id="auth-area"></div>
+  </nav>
+
+  <main>
+    <p class="page-status" id="page-status"></p>
+
+    <div id="home-content" class="hidden">
+      <!-- Matches · Record · Win rate · Last 10 -->
+      <div class="stat-tiles" id="stat-tiles"></div>
+
+      <div class="panel">
+        <h2 class="section-title">My decks</h2>
+        <table class="stats-table" id="deck-table"></table>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Against opponent classes</h2>
+        <table class="stats-table" id="class-table"></table>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Opponent cards I see most</h2>
+        <p class="dim small">Count = in how many of my matches the opponent played it.</p>
+        <div class="card-list" id="seen-cards"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="cards.js"></script>
+  <script src="common.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="home.js"></script>
+</body>
+
+</html>

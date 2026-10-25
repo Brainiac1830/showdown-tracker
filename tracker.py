@@ -1,0 +1,408 @@
+# tracker.py
+# Showdown deck tracker (prototype).
+#
+# How it works, in plain English:
+#   1. It starts Edge (or Chrome) with a "debugging port" turned on and its own
+#      profile folder (browser-profile/). You log in to Showdown there once.
+#   2. Python connects to that port with Playwright and listens to the game's
+#      network messages (no screenshots, no picture recognition).
+#   3. Every /catchup answer from the server goes to game_state.py, which works
+#      out what happened. The overlay window shows it.
+#   4. Each match gets a folder in games/ with:
+#        raw.jsonl     every server answer, untouched (for fixing the tracker later)
+#        log.txt       readable log ("azhh played Silver Bullet")
+#        summary.json  the result and cards played, written at the end
+#
+# Run it:            python tracker.py
+# Test on a file:    python tracker.py --replay C:\Users\Brainiac\Downloads\logs.json
+# No overlay:        add --no-overlay
+
+import argparse
+import asyncio
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+from cards import load_saved_decks, read_deck_file
+import website
+from game_state import Game
+
+# ----------------------------- settings -----------------------------
+
+HERE = Path(__file__).resolve().parent
+GAME_URL = "https://play.showdown.game"
+DEBUG_PORT = 9222                       # the port Python uses to talk to the browser
+PROFILE_DIR = HERE / "browser-profile"  # the tracker's own browser profile (your Showdown login lives here)
+SAVE_FOLDER = HERE / "games"
+DECK_FILE = HERE / "deck.txt"
+# Your decks, saved automatically when you open the game's deck screen
+SAVED_DECKS_FILE = SAVE_FOLDER / "decks" / "Decks_compact.json"
+SHOW_OVERLAY = True
+# Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
+SAVE_ONLINE = True
+
+# Leave as None to search for Edge, then Chrome, then Brave.
+# Or put the full path, e.g. r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+BROWSER_PATH = None
+
+BROWSER_PLACES = [
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+    r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+]
+
+
+# ----------------------------- saving -----------------------------
+
+class Recorder:
+    """Keeps the current Game, and writes its files in games/<folder>/."""
+
+    def __init__(self, folder_prefix="", echo=True, save_online=False):
+        self.folder_prefix = folder_prefix
+        self.echo = echo              # also print the readable log in the terminal
+        self.save_online = save_online and website.is_linked()
+        self.deck_name, self.deck, unknown = read_deck_file(DECK_FILE)
+        if unknown:
+            print(f"deck.txt: these cards weren't found in cards.json: {', '.join(unknown)}")
+        self.saved_decks = []
+        self.game = None
+        self.reload_saved_decks()
+        self.folder = None
+        self._lines_written = 0
+
+    def _start_game(self, game_id):
+        self.finish()  # save the previous match if there was one
+        self.game = Game(game_id, self.deck, self.deck_name, self.saved_decks)
+        stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        self.folder = SAVE_FOLDER / f"{self.folder_prefix}{stamp}_{game_id[:8]}"
+        self.folder.mkdir(parents=True, exist_ok=True)
+        self._lines_written = 0
+        print(f"\nNew match {game_id}  ->  saving in {self.folder}")
+
+    def _write_raw(self, kind, data):
+        with open(self.folder / "raw.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.time(), "kind": kind, "data": data}) + "\n")
+
+    def _write_new_log_lines(self):
+        new = self.game.log_lines[self._lines_written:]
+        if not new:
+            return
+        with open(self.folder / "log.txt", "a", encoding="utf-8") as f:
+            for line in new:
+                f.write(line + "\n")
+                if self.echo:
+                    print(line)
+        self._lines_written = len(self.game.log_lines)
+
+    def handle_catchup(self, body):
+        game_id = (body.get("status") or {}).get("gameId")
+        if not game_id:
+            return
+        if self.game is None or game_id != self.game.game_id:
+            self._start_game(game_id)
+        self._write_raw("catchup", body)
+        was_ended = self.game.ended
+        self.game.feed_catchup(body)
+        self._write_new_log_lines()
+        # Saved after every update, so closing the terminal early still keeps it
+        self.save_summary(quiet=was_ended or not self.game.ended)
+        if self.game.ended and not was_ended and self.save_online:
+            self.upload(self.game)
+
+    def upload(self, game):
+        """Save the finished match to the website, in the background
+        (a web request can take a second; the overlay must not freeze)."""
+        record = game.website_record()
+        game.online_status = "Saving to website..."
+        game.version += 1
+
+        def work():
+            try:
+                saved = website.save_match(record)
+                game.online_status = "Saved to website ✓" if saved else "Already on the website ✓"
+            except Exception as error:
+                game.online_status = f"Not saved online: {error}"
+            print(game.online_status)
+            game.version += 1     # the overlay redraws
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def reload_saved_decks(self):
+        """Read the decks the game sent (when you opened the deck screen)."""
+        self.saved_decks = load_saved_decks(SAVED_DECKS_FILE)
+        if self.saved_decks:
+            print(f"Your decks: {', '.join(d['name'] for d in self.saved_decks)}")
+        if self.game is not None:
+            self.game.saved_decks = self.saved_decks
+            self.game.pick_deck()
+
+    def handle_my_move(self, game_id, move):
+        if self.game is None or game_id != self.game.game_id:
+            return  # the server answer for this game will start it
+        self._write_raw("my_move", move)
+        self.game.feed_my_move(move)
+        self._write_new_log_lines()
+
+    def save_summary(self, quiet=False):
+        with open(self.folder / "summary.json", "w", encoding="utf-8") as f:
+            json.dump(self.game.summary(), f, indent=2, ensure_ascii=False)
+        if not quiet:
+            print(f"Saved {self.folder / 'summary.json'}  (result: {self.game.result_word()})")
+
+    def finish(self):
+        """Save whatever we have (called on a new match and when quitting)."""
+        if self.game is not None:
+            self._write_new_log_lines()
+            self.save_summary()
+
+
+def replay_game(raw_file):
+    """Rebuild a Game from a saved raw.jsonl, without writing any files.
+    (Used by  python website.py --upload-all.)"""
+    deck_name, deck, unknown = read_deck_file(DECK_FILE)
+    game = None
+    for kind, data in read_replay_file(raw_file):
+        if kind == "catchup":
+            game_id = (data.get("status") or {}).get("gameId")
+            if game is None and game_id:
+                game = Game(game_id, deck, deck_name, load_saved_decks(SAVED_DECKS_FILE))
+            if game is not None and game_id == game.game_id:
+                game.feed_catchup(data)
+        elif game is not None:
+            game.feed_my_move(data[1])
+    return game
+
+
+def save_deck_message(url, body):
+    """Keep the game's deck messages (deck screen, card list) for the future
+    deck import. Saved in games/decks/, newest copy per address."""
+    folder = SAVE_FOLDER / "decks"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = url.split("?")[0].split("/api/")[-1].replace("/", "_") or "decks"
+    with open(folder / f"{name}.json", "w", encoding="utf-8") as f:
+        json.dump({"url": url.split("?")[0], "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
+                   "body": body}, f, indent=2, ensure_ascii=False)
+    print(f"(saved deck message: {name})")
+
+
+# ----------------------------- live (browser) -----------------------------
+
+def find_browser():
+    if BROWSER_PATH:
+        return BROWSER_PATH
+    for place in BROWSER_PLACES:
+        if os.path.exists(place):
+            return place
+    for name in ("msedge", "chrome", "brave"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def port_is_open(port):
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def start_browser():
+    """Start the browser with the debugging port, unless it's already running."""
+    if port_is_open(DEBUG_PORT):
+        print(f"A browser is already listening on port {DEBUG_PORT}, using it.")
+        return
+    browser = find_browser()
+    if not browser:
+        sys.exit("Could not find Edge or Chrome. Put its path in BROWSER_PATH at the top of tracker.py.")
+    PROFILE_DIR.mkdir(exist_ok=True)
+    print(f"Starting {Path(browser).name} ...")
+    subprocess.Popen([
+        browser,
+        f"--remote-debugging-port={DEBUG_PORT}",
+        f"--user-data-dir={PROFILE_DIR}",   # separate profile: needed for the port to work
+        "--no-first-run",
+        GAME_URL,
+    ])
+
+
+async def run_live(show_overlay):
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        sys.exit("Playwright is missing. Run:  python -m pip install playwright")
+
+    start_browser()
+    recorder = Recorder(save_online=SAVE_ONLINE)
+    if SAVE_ONLINE and not recorder.save_online:
+        print("(Matches won't be saved to the website: no tracker_key.txt. See website.py.)")
+    stop = asyncio.Event()
+
+    # Python note: "async def" functions are run by asyncio; "await" waits
+    # for something (like a network answer) without freezing the program.
+    async def on_response(response):
+        url = response.url
+        if response.status != 200 or "showdown.game/api/" not in url:
+            return
+        is_catchup = "/catchup" in url
+        is_deck = "deck" in url.lower()
+        if not (is_catchup or is_deck):
+            return
+        try:
+            body = await response.json()
+        except Exception:
+            return  # page changed before we could read it
+        if is_catchup:
+            recorder.handle_catchup(body)
+        else:
+            save_deck_message(url, body)
+            if url.split("?")[0].endswith("/Decks/compact"):
+                recorder.reload_saved_decks()
+
+    def on_request(request):
+        # Your own moves:  POST https://prod.showdown.game/api/game/<gameId>/moves
+        if request.method != "POST" or not request.url.endswith("/moves"):
+            return
+        try:
+            move = (request.post_data_json or {}).get("move") or {}
+        except Exception:
+            return
+        game_id = request.url.rstrip("/").split("/")[-2]
+        recorder.handle_my_move(game_id, move)
+
+    async with async_playwright() as pw:
+        browser = None
+        for attempt in range(40):  # wait up to ~20 s for the browser to start
+            try:
+                browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{DEBUG_PORT}")
+                break
+            except Exception:
+                await asyncio.sleep(0.5)
+        if browser is None:
+            sys.exit(f"Could not connect to the browser on port {DEBUG_PORT}. "
+                     "Close all Edge windows started by the tracker and try again.")
+
+        browser.on("disconnected", lambda b: stop.set())
+        for context in browser.contexts:
+            context.on("response", on_response)
+            context.on("request", on_request)
+        print("Connected. Play a match in that browser window. (Ctrl+C or ✕ to stop)")
+
+        overlay = None
+        if show_overlay:
+            from overlay import Overlay
+            overlay = Overlay(on_quit=stop.set)
+
+        try:
+            while not stop.is_set():
+                if overlay:
+                    overlay.show(recorder.game)
+                    overlay.update_window()
+                await asyncio.sleep(0.05)  # this pause is when browser messages get handled
+        except KeyboardInterrupt:
+            pass
+        finally:
+            recorder.finish()
+            if overlay:
+                overlay.quit()
+        # We only disconnect: the browser window stays open.
+
+
+# ----------------------------- replay (testing) -----------------------------
+
+def read_replay_file(path):
+    """Read a saved file and return a list of ("catchup", body) / ("my_move", (gameId, move)).
+
+    Works with:
+      - a DevTools HAR export (the whole Network tab)
+      - one /catchup answer per line (copied from DevTools, any order)
+      - a raw.jsonl written by this tracker
+    """
+    text = Path(path).read_text(encoding="utf-8")
+    items = []
+
+    try:
+        whole = json.loads(text)       # works if the file is one JSON thing (HAR, or one answer)
+    except json.JSONDecodeError:
+        whole = None                   # several JSON lines
+
+    if isinstance(whole, dict) and "log" in whole:
+        entries = whole["log"]["entries"]
+        entries.sort(key=lambda e: e.get("startedDateTime", ""))
+        for e in entries:
+            url, method = e["request"]["url"], e["request"]["method"]
+            if method == "POST" and url.endswith("/moves"):
+                post = (e["request"].get("postData") or {}).get("text") or "{}"
+                items.append(("my_move", (url.split("/")[-2], json.loads(post).get("move") or {})))
+            elif "/catchup" in url:
+                body = (e["response"].get("content") or {}).get("text")
+                if body:
+                    items.append(("catchup", json.loads(body)))
+        return items
+
+    catchups = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        data = json.loads(line)
+        if "kind" in data and "data" in data:          # our own raw.jsonl
+            if data["kind"] == "catchup":
+                items.append(("catchup", data["data"]))
+            elif data["kind"] == "my_move":
+                items.append(("my_move", (None, data["data"])))
+        else:
+            catchups.append(data)
+    # Lines copied from DevTools can be newest-first, so sort by move number.
+    catchups.sort(key=lambda b: b.get("cursor") or 0)
+    return items + [("catchup", b) for b in catchups]
+
+
+def run_replay(path, show_overlay):
+    recorder = Recorder(folder_prefix="replay_")
+    for kind, data in read_replay_file(path):
+        if kind == "catchup":
+            recorder.handle_catchup(data)
+        else:
+            game_id, move = data
+            recorder.handle_my_move(game_id or (recorder.game and recorder.game.game_id), move)
+    recorder.finish()
+
+    if recorder.game is None:
+        print("No Showdown match found in that file.")
+        return
+    if show_overlay:
+        from overlay import Overlay
+        closed = []
+        overlay = Overlay(on_quit=lambda: closed.append(True))
+        print("Overlay open. Click ✕ on it to finish.")
+        while not closed:
+            overlay.show(recorder.game)
+            overlay.update_window()
+            time.sleep(0.05)
+
+
+# ----------------------------- start -----------------------------
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Showdown deck tracker")
+    parser.add_argument("--replay", help="read a saved log file instead of the live browser")
+    parser.add_argument("--no-overlay", action="store_true", help="don't open the overlay window")
+    args = parser.parse_args()
+    show = SHOW_OVERLAY and not args.no_overlay
+
+    if args.replay:
+        run_replay(args.replay, show)
+    else:
+        try:
+            asyncio.run(run_live(show))
+        except KeyboardInterrupt:
+            print("Stopped.")

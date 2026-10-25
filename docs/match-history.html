@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Match History | Showdown Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Showdown <span>Tracker</span></h1>
+  </header>
+
+  <!-- The menu. class="active" highlights the page you're on. -->
+  <nav class="main-nav">
+    <a href="index.html">Home</a>
+    <a href="match-history.html" class="active">Match History</a>
+    <!-- Sign in / sign out. Filled in by firebase.js -->
+    <div class="auth-area" id="auth-area"></div>
+  </nav>
+
+  <main>
+    <p class="page-status" id="page-status"></p>
+
+    <!-- ===== FILTERS ===== -->
+    <div class="history-filters">
+      <input type="search" id="player-search" class="text-input" placeholder="Search a player..." autocomplete="off">
+      <select id="deck-filter" title="My deck">
+        <option value="all">All my decks</option>
+      </select>
+      <select id="result-filter" title="Result">
+        <option value="all">Wins and losses</option>
+        <option value="win">Wins</option>
+        <option value="loss">Losses</option>
+      </select>
+    </div>
+
+    <!-- "12 matches · 7W 5L · 58% win rate" for the matches shown -->
+    <div class="history-summary" id="history-summary"></div>
+
+    <!-- The list (filled by match-history.js). Click a match for its details. -->
+    <div id="history-list"></div>
+  </main>
+
+  <!-- Normal scripts first, then the modules -->
+  <script src="cards.js"></script>
+  <script src="common.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="match-history.js"></script>
+</body>
+
+</html>

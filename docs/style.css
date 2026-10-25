@@ -1,0 +1,391 @@
+/* ============================================================
+   style.css — how the whole site looks.
+   Colours are picked to match Showdown's own screens: dark navy,
+   purple panel borders and yellow buttons.
+   (CSS comments go between slash-star and star-slash, like # in Python.)
+   ============================================================ */
+
+/* ---------- Colours: named once, reused everywhere ---------- */
+:root {
+  --background: #0b0d18;
+  --panel: #141829;
+  --panel-light: #1d2238;
+  --border: #6c3a8e;        /* purple panel border */
+  --yellow: #fcbf1e;        /* Showdown's button yellow */
+  --text: #ffffff;
+  --text-dim: #9a9cb8;
+  --win: #46dc8c;
+  --loss: #eb505f;
+
+  /* stage colours, the same as the tracker overlay */
+  --stage-any: #9696a5;
+  --stage-preflop: #468cf0;
+  --stage-flop: #f0c337;
+  --stage-river: #eb4b55;
+  --generated: #50dccd;
+}
+
+/* ---------- The whole page ---------- */
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family: "Segoe UI", Arial, sans-serif;
+  margin: 0;
+  padding: 20px 16px 40px;
+}
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.dim   { color: var(--text-dim); }
+.small { font-size: 0.85rem; }
+.hidden { display: none !important; }
+
+/* ---------- Header and menu ---------- */
+.page-header {
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+  font-style: italic;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+h1 span { color: var(--yellow); }
+
+.main-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 14px auto 22px;
+  max-width: 980px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.main-nav a {
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: bold;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 4px;
+}
+
+.main-nav a:hover  { color: var(--text); }
+.main-nav a.active { color: #111; background-color: var(--yellow); }
+
+/* Sign in / out, pushed to the right */
+.auth-area {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-btn {
+  background: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.auth-btn:hover    { border-color: var(--yellow); }
+.auth-status       { color: var(--text-dim); }
+.auth-status.ok    { color: var(--win); }
+.auth-status.error { color: var(--loss); }
+
+.page-status {
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* ---------- Panels and titles ---------- */
+.panel {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.section-title {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Stat tiles (home page) ---------- */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.stat-tile {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.stat-value { font-size: 1.7rem; font-weight: bold; }
+.stat-value .w { color: var(--win); }
+.stat-value .l { color: var(--loss); }
+.stat-label { color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; }
+
+/* ---------- Tables (win rate per deck / per opponent classes) ---------- */
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table th {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.stats-table td {
+  padding: 7px 8px;
+  border-top: 1px solid var(--panel-light);
+}
+
+.stats-table .num { text-align: right; white-space: nowrap; }
+
+/* A thin bar showing the win rate */
+.rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.rate-bar {
+  width: 90px;
+  height: 6px;
+  background-color: var(--loss);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.rate-fill { height: 100%; background-color: var(--win); }
+
+/* ---------- Class tags ("Rebel", "Inventor"...) ---------- */
+.class-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border-radius: 3px;
+  background-color: var(--panel-light);
+  color: var(--text-dim);
+}
+
+.class-rebel      { color: #ff8a5c; }
+.class-inventor   { color: #5cc8ff; }
+.class-gambler    { color: #ffd84a; }
+.class-protector  { color: #7ee07e; }
+.class-cheater    { color: #d08cff; }
+.class-bureaucrat { color: #c0c0c0; }
+
+/* ---------- Card bars (same look as the tracker overlay) ---------- */
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.card-bar {
+  --stage: var(--stage-any);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 6px 0 10px;
+  background-color: #241f34;
+  border-left: 4px solid var(--stage);
+  overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: bold;
+}
+
+/* the card's art, faded in from the left (like Hearthstone Deck Tracker) */
+.card-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 30px;
+  width: 140px;
+  background-image: var(--art);
+  background-size: cover;
+  background-position: center 40%;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 70%);
+  mask-image: linear-gradient(to right, transparent, black 70%);
+}
+
+.card-bar > * { position: relative; }   /* text stays above the art */
+
+.stage-Any     { --stage: var(--stage-any); }
+.stage-PreFlop { --stage: var(--stage-preflop); }
+.stage-Flop    { --stage: var(--stage-flop); }
+.stage-River   { --stage: var(--stage-river); }
+.card-bar.generated, .card-bar.maybe { border-left-color: var(--generated); }
+.card-bar.maybe { border-left-color: #2d6e69; }
+
+.card-score {
+  min-width: 26px;
+  text-align: center;
+  border-radius: 4px;
+  background-color: var(--stage);
+  color: #14101e;
+}
+
+.card-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 3px #000, 0 0 3px #000;
+}
+
+.spark { color: var(--generated); margin-right: 4px; }
+.spark.maybe { color: #2d6e69; }
+
+.card-count {
+  min-width: 20px;
+  text-align: center;
+  background-color: #0e0c16;
+  color: var(--yellow);
+  border-radius: 2px;
+}
+
+/* ---------- Match history ---------- */
+.history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.text-input, select {
+  background-color: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 0.95rem;
+}
+
+.text-input { flex: 1; min-width: 180px; }
+
+.history-summary {
+  margin-bottom: 10px;
+  color: var(--text-dim);
+}
+
+.history-summary b { color: var(--text); }
+.history-summary .w { color: var(--win); font-weight: bold; }
+.history-summary .l { color: var(--loss); font-weight: bold; }
+
+.match-row {
+  background-color: var(--panel);
+  border: 1px solid var(--panel-light);
+  border-left: 4px solid var(--text-dim);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.match-row.result-win  { border-left-color: var(--win); }
+.match-row.result-loss { border-left-color: var(--loss); }
+
+.match-main {
+  display: grid;
+  grid-template-columns: 54px 1fr 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.match-main:hover { background-color: var(--panel-light); }
+
+.match-result { font-weight: bold; text-transform: uppercase; }
+.result-win  .match-result { color: var(--win); }
+.result-loss .match-result { color: var(--loss); }
+
+.match-name { font-weight: bold; }
+.match-score { font-weight: bold; white-space: nowrap; }
+
+.btn {
+  background-color: var(--yellow);
+  color: #111;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.btn-danger { background-color: transparent; color: var(--loss); border: 1px solid var(--loss); }
+.btn-danger:hover { background-color: var(--loss); color: #fff; }
+
+.match-details {
+  border-top: 1px solid var(--panel-light);
+  padding: 12px;
+}
+
+.details-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.details-title {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.hand-line { margin: 2px 0; font-size: 0.9rem; }
+.hand-line .w { color: var(--win); }
+.hand-line .l { color: var(--loss); }
+
+.details-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+/* ---------- Small screens (phone) ---------- */
+@media (max-width: 700px) {
+  .match-main {
+    grid-template-columns: 48px 1fr auto;
+  }
+  .match-main .match-deck,
+  .match-main .match-date { display: none; }
+  .details-columns { grid-template-columns: 1fr; }
+  .auth-area { margin-left: 0; width: 100%; justify-content: center; }
+}

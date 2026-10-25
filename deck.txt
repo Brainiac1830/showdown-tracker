@@ -1,0 +1,16 @@
+# Your Showdown deck (optional, until the automatic deck import exists).
+# With a deck here, the overlay shows "MY DECK" with copies left for every card.
+# Without one, it shows the cards you've played.
+#
+# Lines can be:
+#   name: Theory Craft        the deck's name (shown at the top of the overlay)
+#   2 Silver Bullet           2 copies (card name or id, e.g. silver_bullet)
+#   Silver Bullet             1 copy
+#   code: eyJjIjpbWyJ...      a deck code in the game's own format
+# Lines starting with # are ignored.
+#
+# Example (remove the # signs to use it):
+# name: Theory Craft
+# 2 Silver Bullet
+# 2 Salvaged Goods
+# 2 Prototype

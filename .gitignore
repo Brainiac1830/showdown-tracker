@@ -1,0 +1,7 @@
+# Your Showdown login lives in this browser profile: never commit it
+browser-profile/
+# Match logs (can contain game ids and names)
+games/
+__pycache__/
+art/
+tracker_key.txt
