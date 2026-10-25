@@ -11,7 +11,7 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 
 ## Files
 - `tracker.py`: starts Edge with `--remote-debugging-port=9222` and its own profile (`browser-profile/`), connects with Playwright `connect_over_cdp`, listens to `/catchup` responses (game events) and `/moves` requests (my moves), saves deck messages (`/api/Decks/compact` = my decks) to `games/decks/`. Writes `games/<date>_<id>/raw.jsonl, log.txt, summary.json`. Auto-saves finished matches online (`SAVE_ONLINE`). `--replay FILE` re-runs a saved file; `replay_game()` rebuilds a Game.
-- `game_state.py`: the Game class (all game logic). `overlay.py`: Pillow-drawn tkinter overlay (HDT style). `cards.py`: card list, deck files, `GENERATORS`, `max_copies`. `update_cards.py`: rebuilds `cards.json` + `docs/cards.js` from the game's `card-faces.catalog-*.js` script.
+- `game_state.py`: the Game class (all game logic, incl. spectating). `overlay.py`: two Pillow-drawn tkinter windows (left my deck, right opponent + LIKELY CARDS; spectating: P1 / P2), settings in `overlay_settings.json` (gitignored). `profiles.py`: player profiles / predictions from `games/*/record.json` (written when a match ends; `backfill_records()` rebuilds missing ones). `cards.py`: card list, deck files, `GENERATORS`, `max_copies`. `update_cards.py`: rebuilds `cards.json` + `docs/cards.js` from the game's `card-faces.catalog-*.js` script.
 - `website.py`: Firestore REST save to `users/<uid>/showdown_matches/<gameId>` (+ `meta/lastChange.showdownMatches`), using `tracker_key.txt` (same key as Origins). `--upload-all` uploads old matches.
 - `docs/`: the website (GitHub Pages from `/docs`): `index.html/home.js`, `match-history.*`, `database.js`, `firebase.js`, `common.js` (card bars), `cards.js` (generated).
 - `.gitignore`: browser-profile/, games/, art/, tracker_key.txt. **Never commit or print tracker_key.txt.**
@@ -22,6 +22,8 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 - Card tracking by game card id: CreateCard/MoveCards/DestroyCard/UpdateCardVisibility. My draws = my deck card ids moving to `P1_Hand`. Opponent hidden cards get **new ids on every hand change** (can't follow one card).
 - Generated cards: `AnimateCard` with `Info.animationId == "generatedCard"` on the card id = the lighter border, sent to **both** players (found 2026-10-25; matched every generated card in 10 matches). My own cards also have `Slots: [{"Type":"Generated"}]`. The class rule and "maybe" guesses were removed. Backcheck by copy limit (Rare 1, Common 2) stays. Opponent's held generated count = hand arrivals − deck draws.
 - My deck = the saved deck whose 2 classes match the match (`pick_deck`).
+- Spectating: `viewerRole` 2 (players are 0 = P1, 1 = P2). Snapshot of a joined-midway match has `SetGameLogItems` with the whole log so far + named discard/cast cards; hand results only from joining on. Spectated website record: `{spectated: true, result: "spectated", winner, players: [{name, classes, chips, cards, generated}], hands: [{hand, winner, p1Hand, p2Hand}]}`.
+- Website pages: Home (own matches only), Match History (filter "Watched matches"), Players (`players.js`, same % logic as `profiles.predict`).
 
 ## Testing
 - `python tracker.py --replay games\<folder>\raw.jsonl --no-overlay` (regression check on real matches).

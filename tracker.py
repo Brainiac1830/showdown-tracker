@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 
 from cards import load_saved_decks, read_deck_file
+import profiles
 import website
 from game_state import Game
 
@@ -78,6 +79,15 @@ class Recorder:
         self.reload_saved_decks()
         self.folder = None
         self._lines_written = 0
+        # Earlier finished matches (games/*/record.json), for the "likely cards" prediction
+        self.records = []
+        if not folder_prefix:
+            backfill_records()
+            self.records = profiles.load_records(SAVE_FOLDER)
+
+    def predict(self, name, classes, game_id):
+        """What this player played in earlier matches with these classes (see profiles.py)."""
+        return profiles.predict(self.records, name, classes, exclude_game=game_id)
 
     def _start_game(self, game_id):
         self.finish()  # save the previous match if there was one
@@ -155,6 +165,11 @@ class Recorder:
     def save_summary(self, quiet=False):
         with open(self.folder / "summary.json", "w", encoding="utf-8") as f:
             json.dump(self.game.summary(), f, indent=2, ensure_ascii=False)
+        if self.game.ended:
+            # record.json = what the website gets; also what player profiles are built from
+            record = self.game.website_record()
+            save_record(self.folder, record)
+            self.records = [r for r in self.records if r.get("gameId") != record["gameId"]] + [record]
         if not quiet:
             print(f"Saved {self.folder / 'summary.json'}  (result: {self.game.result_word()})")
 
@@ -163,6 +178,22 @@ class Recorder:
         if self.game is not None:
             self._write_new_log_lines()
             self.save_summary()
+
+
+def save_record(folder, record):
+    with open(Path(folder) / "record.json", "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=1, ensure_ascii=False)
+
+
+def backfill_records():
+    """Matches saved before record.json existed: rebuild it from raw.jsonl (once)."""
+    for raw in sorted(SAVE_FOLDER.glob("*/raw.jsonl")):
+        folder = raw.parent
+        if folder.name.startswith(("replay_", "test_")) or (folder / "record.json").exists():
+            continue
+        game = replay_game(raw)
+        if game is not None and game.ended:
+            save_record(folder, game.website_record())
 
 
 def replay_game(raw_file):
@@ -299,7 +330,7 @@ async def run_live(show_overlay):
         overlay = None
         if show_overlay:
             from overlay import Overlay
-            overlay = Overlay(on_quit=stop.set)
+            overlay = Overlay(on_quit=stop.set, predict=recorder.predict)
 
         try:
             while not stop.is_set():
@@ -368,6 +399,7 @@ def read_replay_file(path):
 
 def run_replay(path, show_overlay):
     recorder = Recorder(folder_prefix="replay_")
+    recorder.records = profiles.load_records(SAVE_FOLDER)     # so the replay can show predictions
     for kind, data in read_replay_file(path):
         if kind == "catchup":
             recorder.handle_catchup(data)
@@ -382,7 +414,7 @@ def run_replay(path, show_overlay):
     if show_overlay:
         from overlay import Overlay
         closed = []
-        overlay = Overlay(on_quit=lambda: closed.append(True))
+        overlay = Overlay(on_quit=lambda: closed.append(True), predict=recorder.predict)
         print("Overlay open. Click ✕ on it to finish.")
         while not closed:
             overlay.show(recorder.game)

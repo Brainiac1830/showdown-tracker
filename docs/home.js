@@ -100,7 +100,8 @@ watchUser(async function (user) {
   }
   pageStatus.textContent = "Loading your matches...";
   try {
-    const matches = await loadMatches();
+    // Spectated matches are other people's games: they're on the Players page, not in my stats
+    const matches = (await loadMatches()).filter(function (m) { return !m.spectated; });
     if (matches.length === 0) {
       pageStatus.textContent = "No matches yet. Play a match with the tracker running and your stats appear here.";
       return;

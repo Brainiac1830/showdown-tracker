@@ -24,7 +24,8 @@ let allMatches = [];
 
 // Fill the deck list with the decks found in your matches
 function fillDeckFilter() {
-  const names = [...new Set(allMatches.map(function (m) { return m.deckName || "(unknown deck)"; }))].sort();
+  const mine = allMatches.filter(function (m) { return !m.spectated; });
+  const names = [...new Set(mine.map(function (m) { return m.deckName || "(unknown deck)"; }))].sort();
   deckFilter.innerHTML = `<option value="all">All my decks</option>` +
     names.map(function (n) { return `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`; }).join("");
 }
@@ -34,9 +35,12 @@ function filteredMatches() {
   const text = playerSearch.value.trim().toLowerCase();
   return allMatches
     .filter(function (m) {
-      const playerOk = (m.opponent || "").toLowerCase().includes(text);
-      const deckOk = deckFilter.value === "all" || (m.deckName || "(unknown deck)") === deckFilter.value;
-      const resultOk = resultFilter.value === "all" || m.result === resultFilter.value;
+      // a player's name: the opponent, or either player in a watched match
+      const names = appearances(m).map(function (a) { return a.name.toLowerCase(); });
+      const playerOk = names.some(function (n) { return n.includes(text); });
+      // "My matches" = everything I played; watched matches only under their own choice
+      const resultOk = resultFilter.value === "all" ? !m.spectated : m.result === resultFilter.value;
+      const deckOk = m.spectated || deckFilter.value === "all" || (m.deckName || "(unknown deck)") === deckFilter.value;
       return playerOk && deckOk && resultOk;
     })
     .sort(function (a, b) { return b.playedAt - a.playedAt; });
@@ -48,12 +52,17 @@ function renderSummary(matches) {
     summaryBox.innerHTML = "";
     return;
   }
+  if (resultFilter.value === "spectated") {
+    summaryBox.innerHTML = `<b>${matches.length}</b> watched match${matches.length === 1 ? "" : "es"}`;
+    return;
+  }
   const wins = matches.filter(function (m) { return m.result === "win"; }).length;
   const losses = matches.filter(function (m) { return m.result === "loss"; }).length;
   const rate = wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
-  const filtered = matches.length !== allMatches.length;
+  const total = allMatches.filter(function (m) { return !m.spectated; }).length;
+  const filtered = matches.length !== total;
   summaryBox.innerHTML = `
-    <b>${matches.length}</b> match${matches.length === 1 ? "" : "es"}${filtered ? ` (of ${allMatches.length})` : ""}
+    <b>${matches.length}</b> match${matches.length === 1 ? "" : "es"}${filtered ? ` (of ${total})` : ""}
     · <span class="w">${wins}W</span> <span class="l">${losses}L</span>
     · <b>${rate}%</b> win rate`;
 }
@@ -82,22 +91,41 @@ function createRow(match) {
   const row = document.createElement("div");
   row.className = "match-row result-" + match.result;
 
-  row.innerHTML = `
-    <div class="match-main">
-      <span class="match-result">${RESULT_WORDS[match.result] || "?"}</span>
-      <span class="match-deck">
-        <span class="match-name">${escapeHtml(match.deckName || "(unknown deck)")}</span><br>
-        ${classTags(match.myClasses)}
-      </span>
-      <span class="match-enemy">
-        <span class="dim small">vs</span> <span class="match-name">${escapeHtml(match.opponent)}</span><br>
-        ${classTags(match.opponentClasses)}
-      </span>
-      <span class="match-score" title="Final chips: you – opponent">${match.myChips ?? "?"} – ${match.opponentChips ?? "?"}</span>
-      <span class="match-date dim small">${formatDate(match.playedAt)}</span>
-    </div>
-    <div class="match-details hidden"></div>
-  `;
+  if (match.spectated) {
+    // A match I watched: player 1 vs player 2, the winner in green
+    const [p1, p2] = match.players || [{}, {}];
+    const nameHtml = function (p) {
+      const won = p.name && p.name === match.winner;
+      return `<span class="match-name" style="${won ? "color: var(--win)" : ""}">${escapeHtml(p.name || "?")}${won ? " ★" : ""}</span>`;
+    };
+    row.innerHTML = `
+      <div class="match-main">
+        <span class="match-result">${RESULT_WORDS.spectated}</span>
+        <span class="match-deck">${nameHtml(p1)}<br>${classTags(p1.classes)}</span>
+        <span class="match-enemy"><span class="dim small">vs</span> ${nameHtml(p2)}<br>${classTags(p2.classes)}</span>
+        <span class="match-score" title="Final chips">${p1.chips ?? "?"} – ${p2.chips ?? "?"}</span>
+        <span class="match-date dim small">${formatDate(match.playedAt)}</span>
+      </div>
+      <div class="match-details hidden"></div>
+    `;
+  } else {
+    row.innerHTML = `
+      <div class="match-main">
+        <span class="match-result">${RESULT_WORDS[match.result] || "?"}</span>
+        <span class="match-deck">
+          <span class="match-name">${escapeHtml(match.deckName || "(unknown deck)")}</span><br>
+          ${classTags(match.myClasses)}
+        </span>
+        <span class="match-enemy">
+          <span class="dim small">vs</span> <span class="match-name">${escapeHtml(match.opponent)}</span><br>
+          ${classTags(match.opponentClasses)}
+        </span>
+        <span class="match-score" title="Final chips: you – opponent">${match.myChips ?? "?"} – ${match.opponentChips ?? "?"}</span>
+        <span class="match-date dim small">${formatDate(match.playedAt)}</span>
+      </div>
+      <div class="match-details hidden"></div>
+    `;
+  }
 
   const details = row.querySelector(".match-details");
   row.querySelector(".match-main").addEventListener("click", function () {
@@ -112,8 +140,36 @@ function createRow(match) {
   return row;
 }
 
+// The inside of an opened watched match: both players' cards
+function spectatedDetailsHtml(match) {
+  const hands = (match.hands || []).map(function (h) {
+    const how = h.p1Hand || h.p2Hand
+      ? `${escapeHtml(h.p1Hand || "?")} vs ${escapeHtml(h.p2Hand || "?")}`
+      : `<span class="dim">by fold</span>`;
+    return `<p class="hand-line">${escapeHtml(h.hand)}: ${escapeHtml(h.winner)} · ${how}</p>`;
+  }).join("") || `<p class="dim small">No hands recorded</p>`;
+  const column = function (p) {
+    return `<div>
+        <p class="details-title">${escapeHtml(p.name || "?")} played</p>
+        <div class="card-list">${cardBars(p.cards, [[p.generated || {}, "generated"]])}</div>
+      </div>`;
+  };
+  const [p1, p2] = match.players || [{}, {}];
+  return `
+    <p class="details-title">Hands (from when I started watching)</p>
+    ${hands}
+    <div class="details-columns" style="margin-top: 12px">${column(p1)}${column(p2)}</div>
+    <div class="details-footer">
+      <span class="dim small">✦ generated during the match</span>
+      <button class="btn btn-danger" data-action="delete">Delete</button>
+    </div>`;
+}
+
 // The inside of an opened match
 function detailsHtml(match) {
+  if (match.spectated) {
+    return spectatedDetailsHtml(match);
+  }
   const hands = (match.hands || []).map(function (h) {
     const won = h.won === "me" ? `<span class="w">Won</span>` : h.won === "opponent" ? `<span class="l">Lost</span>` : "Split";
     // No poker hands shown = someone folded before the showdown
@@ -147,7 +203,8 @@ function detailsHtml(match) {
 }
 
 async function removeMatch(match) {
-  if (!confirm(`Delete this match (${RESULT_WORDS[match.result]} vs ${match.opponent}, ${formatDate(match.playedAt)})? This can't be undone.`)) {
+  const who = appearances(match).map(function (a) { return a.name; }).join(" vs ");
+  if (!confirm(`Delete this match (${RESULT_WORDS[match.result]}: ${who}, ${formatDate(match.playedAt)})? This can't be undone.`)) {
     return;
   }
   try {

@@ -71,6 +71,9 @@ class Game:
 
         self.me = None                    # "P1" or "P2" once we know
         self._me_is_guess = False         # True while "me" is only a guess from viewerRole
+        # Spectating: I'm watching two other players. Then there's no "me": both
+        # players are tracked like opponents (only cards they play are visible).
+        self.spectating = False
         self.names = {}                   # {"P1": "Brainiac", "P2": "azhh"}
         self._turn_player = None          # who the last TurnChanged was for (used for names)
 
@@ -129,7 +132,7 @@ class Game:
         self.version += 1
 
     def set_me(self, pid, why):
-        if pid in ("P1", "P2") and self.me is None:
+        if pid in ("P1", "P2") and self.me is None and not self.spectating:
             self.me = pid
             self.say(f"You are {pid} ({why})")
 
@@ -137,7 +140,17 @@ class Game:
 
     def feed_my_move(self, move):
         """One move you sent (from the /moves request)."""
+        if self.spectating:
+            self.spectating = False      # I made a move, so I'm playing after all
+            self.say("Not spectating after all: you made a move")
         self.set_me(move.get("playerId"), "from a move you sent")
+
+    def start_spectating(self, why):
+        if not self.spectating:
+            self.spectating = True
+            self.me = None
+            self._me_is_guess = False
+            self.say(f"Spectating ({why}): tracking both players")
 
     def feed_catchup(self, body):
         """One /catchup answer from the server."""
@@ -147,7 +160,11 @@ class Game:
         # viewerRole 0 seems to mean P1 and 1 means P2. Only a fallback guess:
         # the hand cards in the log tell us for sure (see _read_log_item).
         role = status.get("viewerRole")
-        if self.me is None and role in (0, 1):
+        if role is not None and role not in (0, 1):
+            # Players are 0 (P1) and 1 (P2), so another number should mean a spectator.
+            # (Not seen yet in a real spectated match: check the first one.)
+            self.start_spectating(f"viewerRole {role}")
+        elif self.me is None and role in (0, 1) and not self.spectating:
             self.me = "P1" if role == 0 else "P2"
             self.say(f"You are probably {self.me} (viewerRole {role}, will confirm)")
             self._me_is_guess = True
@@ -171,6 +188,10 @@ class Game:
             self._reading_snapshot = True
             self._read_events(snap, "initEventData", is_newest=True)
             self._reading_snapshot = False
+            # As a player, the snapshot always shows my hand by name (all 11 test matches).
+            # Nobody's hand visible = I'm watching someone else's match.
+            if not self.starting_hand:
+                self.start_spectating("no hand cards visible")
 
         # The batches are the new moves. Read them in move order.
         batches = sorted(body.get("batches") or [], key=lambda b: b.get("moveIndex", 0))
@@ -518,7 +539,9 @@ class Game:
         self.say(f"=== Match over: {reason} ===")
 
     def result_word(self):
-        """'win' / 'loss' / 'unknown' from my point of view."""
+        """'win' / 'loss' / 'unknown' from my point of view ('spectated' if I watched)."""
+        if self.spectating:
+            return "spectated"
         if not self.winner or not self.me:
             return "unknown"
         return "win" if self.winner == self.me else "loss"
@@ -568,6 +591,8 @@ class Game:
     def website_record(self):
         """The match as it's saved on the website (website.py). Cards are ids,
         e.g. {"salvaged_goods": 2}; the website has the names and pictures."""
+        if self.spectating:
+            return self.spectated_record()
         opp = self.opponent()
         me = self.me
         return {
@@ -590,4 +615,23 @@ class Game:
             "myGenerated": dict(self.generated[me]),
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
+        }
+
+    def spectated_record(self):
+        """A match I watched: both players, with the cards they played."""
+        def player(pid):
+            return {"name": self.names.get(pid) or pid, "classes": self.deck_classes.get(pid, []),
+                    "chips": self.chips.get(pid, 0), "cards": dict(self.played[pid]),
+                    "generated": dict(self.generated[pid])}
+        # EndHand results are stored as "my" = P1 and "opponent" = P2 when nobody is "me"
+        return {
+            "gameId": self.game_id,
+            "playedAt": self.played_at_ms or int(self.started_at * 1000),
+            "spectated": True,
+            "result": "spectated",
+            "winner": self.names.get(self.winner) or "",
+            "players": [player("P1"), player("P2")],
+            "hands": [{"hand": h["hand"] or "", "winner": self.names.get(h["winner"]) or "split",
+                       "p1Hand": h["myHand"] or "", "p2Hand": h["opponentHand"] or ""}
+                      for h in self.hand_results],
         }

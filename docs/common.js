@@ -8,7 +8,7 @@
 const STAGES = ["Any", "PreFlop", "Flop", "River"];
 const STAGE_NAMES = { Any: "Universal", PreFlop: "Pre-flop", Flop: "Flop", River: "River" };
 
-const RESULT_WORDS = { win: "Win", loss: "Loss", unknown: "?" };
+const RESULT_WORDS = { win: "Win", loss: "Loss", spectated: "Watched", unknown: "?" };
 
 
 // Text from the database can contain < or &; this makes it safe to put in the page
@@ -43,11 +43,32 @@ function classTags(classes) {
 }
 
 
+// ---------- Players seen in a match (same idea as profiles.py) ----------
+
+// "Protector / Rebel": classes sorted, so the order doesn't matter
+function classKey(classes) {
+  return [...(classes || [])].sort().join(" / ") || "?";
+}
+
+// The players whose cards we saw in one match: the opponent in my own matches,
+// both players in a spectated one. Each: { name, classes, cards, generated, match }
+function appearances(match) {
+  const players = match.spectated
+    ? (match.players || [])
+    : [{ name: match.opponent, classes: match.opponentClasses, cards: match.opponentCards, generated: match.opponentGenerated }];
+  return players
+    .filter(function (p) { return p.name && p.name !== "?"; })
+    .map(function (p) {
+      return { name: p.name, classes: p.classes || [], cards: p.cards || {}, generated: p.generated || {}, match: match };
+    });
+}
+
+
 // ---------- Card bars (same look as the tracker overlay) ----------
 // One bar: stage stripe, chip score badge, name, card art faded in, count.
-// kind: "" (normal) or "generated" (✦)
+// kind: "" (normal), "generated" (✦) or "guess" (a likely card: dashed, % in the box)
 function cardBar(card, count, kind) {
-  const mark = kind ? `<span class="spark ${kind}">✦</span>` : "";
+  const mark = kind === "generated" ? `<span class="spark">✦</span>` : "";
   const art = card.art ? `style="--art: url('${card.art}')"` : "";
   return `
     <div class="card-bar stage-${card.type} ${kind || ""}" ${art}

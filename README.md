@@ -45,6 +45,17 @@ The server never sends the opponent's hidden cards, so the tracker only knows wh
 3. The overlay appears at the top left. Drag it where you like.
 
 ## The overlay
+Two windows (drag each one where you like; the places are remembered in `overlay_settings.json`):
+- **Left: my deck.** **Right: the opponent.** When you **spectate**, left = player 1 and right = player 2.
+- **LIKELY CARDS** (right window, under what they played): the cards this player played in your
+  **earlier matches with the same 2 classes** (played against them or watched).
+  - It is **not their decklist**: % = in how many of those matches they played the card. We only
+    see played cards (about 10 of 30 per match), so a card they always run can still show 40-60%.
+  - Predicted rows are faded with a dashed stripe and the % in the box. Once they play the card,
+    it moves up to the normal list.
+  - **Click the LIKELY CARDS title to hide / show it.** Keep it hidden in real-money matches until
+    Showdown confirms trackers are allowed (it's the kind of feature poker sites ban most).
+
 - Cards are grouped by stage, in this order and colour:
   **Universal** (grey), **Pre-flop** (blue), **Flop** (yellow), **River** (red).
 - Inside a stage, cards are sorted by chip score, lowest first (set `SORT_HIGH_FIRST = True`
@@ -86,8 +97,15 @@ It uses the **same Firebase project and Google sign-in as the Origins website**,
 new to set up in Firebase. Showdown matches are kept apart in `users/<you>/showdown_matches`.
 
 - **Home**: record, win rate, win rate per deck, per opponent class pair, opponent cards seen most.
-- **Match History**: every match (search a player, filter by deck / result). Click a match for each
+- **Match History**: every match (search a player, filter by deck / result; "Watched matches" = spectated). Click a match for each
   hand's result, your starting hand, and the cards both of you played (stage colours, ✦ = generated).
+- **Players**: everyone you played or watched: record against them, class pairs used, and per class
+  pair their likely cards with % (same numbers as the overlay, same "not their decklist" warning).
+
+### Spectating
+Spectate a match in the tracker's Edge window: it's recorded like your own matches, with both
+players tracked (only played cards are visible). Joining halfway is fine: the game sends the log so far.
+Watched matches are saved to the website too, but don't count in your own stats.
 
 ### One-time setup
 1. **Copy the tracker key.** Copy `tracker_key.txt` from

@@ -147,7 +147,7 @@ def save_match(record, replace=False):
     """Saves one match (Game.website_record()). Returns True if saved,
     False if it was saved already (unless replace=True: then it's overwritten).
     Raises RuntimeError with a readable message."""
-    if record.get("result") not in ("win", "loss"):
+    if record.get("result") not in ("win", "loss", "spectated"):
         raise RuntimeError("The match has no result yet.")
     uid = read_key()["uid"]
     match_write = {

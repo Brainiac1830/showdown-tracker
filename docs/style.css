@@ -377,6 +377,48 @@ h1 span { color: var(--yellow); }
   margin-top: 12px;
 }
 
+/* ---------- Likely cards (Players page): a guess, so it looks different ---------- */
+.card-bar.guess {
+  background-color: #1a1727;
+  border-left: 4px dashed var(--stage);
+}
+
+.card-bar.guess .card-score {
+  background-color: transparent;
+  color: var(--stage);
+  border: 1px solid var(--stage);
+}
+
+.card-bar.guess .card-name  { color: #cdc8dc; }
+.card-bar.guess .card-count { color: #beaaff; min-width: 38px; font-size: 0.8rem; }
+.card-bar.guess::before     { opacity: 0.5; }
+
+.guess-note {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: #beaaff;
+}
+
+/* ---------- Players page ---------- */
+.player-main {
+  grid-template-columns: 160px 1fr auto auto;
+}
+
+.pair-tag {
+  display: inline-block;
+  margin: 2px 10px 2px 0;
+  white-space: nowrap;
+}
+
+.pair-block {
+  margin-bottom: 18px;
+  max-width: 520px;
+}
+
+/* spectated matches in the history: a neutral colour */
+.match-row.result-spectated { border-left-color: #beaaff; }
+.result-spectated .match-result { color: #beaaff; font-size: 0.8rem; }
+
 /* ---------- Small screens (phone) ---------- */
 @media (max-width: 700px) {
   .match-main {
@@ -384,6 +426,7 @@ h1 span { color: var(--yellow); }
   }
   .match-main .match-deck,
   .match-main .match-date { display: none; }
+  .player-main { grid-template-columns: 1fr auto; }
   .details-columns { grid-template-columns: 1fr; }
   .auth-area { margin-left: 0; width: 100%; justify-content: center; }
 }
