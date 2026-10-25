@@ -66,8 +66,12 @@ The two overlay windows appear at the edges of the screen. Drag them where you l
   Your own deck is never shared by your tracker.
 
 ## 6. Updating
-Download the ZIP again (step 2) and extract it **into the same folder**, choosing **Replace the files**.
-Your matches (`games` folder), your key and your login are kept.
+**Double-click `update.bat`** (close the tracker first). It downloads the newest version from GitHub,
+replaces the tracker files and shows what changed. Your key, your matches (`games` folder), your login
+and your settings are kept.
+
+(By hand: download the ZIP again as in step 2 and extract it into the same folder, choosing
+**Replace the files**.)
 
 ## Problems?
 | What you see | What to do |
