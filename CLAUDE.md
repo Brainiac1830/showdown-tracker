@@ -29,7 +29,7 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 ## Tournament mode
 - Trophy button (left overlay window) -> `Recorder.set_tournament(name)` (saved in `tournament_mode.json`, gitignored); `Game.tournament` goes into the match record and into shared sightings (`tournament` field, allowed by firestore.rules).
 - `profiles.tournament_deck()`: union of cards a player played in that tournament (max copies per match), my records + shared; names compared with `tournament_key()` (lower case, single spaces). Overlay right window: TOURNAMENT DECK with copies left this match; LIKELY CARDS skips known cards. Website `tournaments.html/js` (same logic).
-- Tracker saves API responses mentioning "tournament" (urls in `TOURNAMENT_HINTS`) to `games/tournaments/` to learn auto-detection later: check them after the first real tournament match.
+- Auto-detection (`tournaments.py` TournamentIndex): `GET /api/tournaments/public/<id>` = bracket `{name, status, deckType: "PerTournament" (= locked), participants [{userId, username, gameDeckJson (empty while running)}], stages[].rounds[].matches[] {currentGameId, p1/p2 {userId}, completedAt}}`. Match -> tournament by currentGameId, by `known_games.json` (every id ever seen; the bracket only shows the CURRENT game of each match), or by both player names in an unfinished bracket match (BO3 games 2-3). `Game.detect_tournament()` runs on every catchup and when a bracket arrives; overrides the manual trophy name; banner shows "auto". `replay_game()` detects too, else keeps the name from record.json; `--upload-all` rewrites record.json.
 
 ## Testing
 - `python tracker.py --replay games\<folder>\raw.jsonl --no-overlay` (regression check on real matches).

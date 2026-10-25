@@ -298,7 +298,7 @@ def count_saved():
 def upload_all(replace=False):
     """Replays every match folder in games\\ and saves the finished ones
     (replace=True: also re-save the ones already online)."""
-    from tracker import SAVE_FOLDER, replay_game     # here, not at the top: tracker.py imports this file
+    from tracker import SAVE_FOLDER, replay_game, save_record   # here, not at the top: tracker.py imports this file
     from profiles import appearances
     folders = sorted(p for p in SAVE_FOLDER.glob("*/raw.jsonl")
                      if not p.parent.name.startswith(("replay_", "test_")))
@@ -310,6 +310,7 @@ def upload_all(replace=False):
             continue
         try:
             record = game.website_record()
+            save_record(raw.parent, record)          # keep the local copy the same (used for predictions)
             saved = save_match(record, replace)
             players = " vs ".join(a["name"] for a in appearances(record))
             print(f"  {name}: {'saved' if saved else 'already online'} ({game.result_word()}: {players})"

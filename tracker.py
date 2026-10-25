@@ -32,6 +32,7 @@ from pathlib import Path
 from cards import load_saved_decks, read_deck_file
 import profiles
 import website
+from tournaments import TournamentIndex
 from game_state import Game
 
 # ----------------------------- settings -----------------------------
@@ -86,7 +87,9 @@ class Recorder:
         # Earlier finished matches (games/*/record.json), for the "likely cards" prediction
         self.records = []
         self.shared = profiles.load_shared(SHARED_FILE)      # last download, works offline
-        self.tournament = load_tournament_mode()
+        self.tournament = load_tournament_mode()        # the manual trophy name
+        # Tournament brackets seen in the game: detect tournament matches by themselves
+        self.tournament_index = TournamentIndex(SAVE_FOLDER / "tournaments")
         if not folder_prefix:
             backfill_records()
             self.records = profiles.load_records(SAVE_FOLDER)
@@ -99,25 +102,35 @@ class Recorder:
 
     # ----- tournament mode (the overlay's trophy button calls these) -----
 
+    def tournament_message(self, body):
+        """A tournament message from the game: learn its bracket, and check the
+        current match again (the bracket can arrive after the match started)."""
+        if self.tournament_index.update(body) and self.game is not None:
+            if self.game.detect_tournament(self.tournament_index):
+                self._write_new_log_lines()
+                self.save_summary(quiet=True)      # (rewrites record.json if the match is over)
+
     def set_tournament(self, name):
         """Turn tournament mode on (a name) or off (None). The match being played or
         watched right now counts too, if it isn't over yet."""
         name = " ".join((name or "").split())[:60] or None
         self.tournament = name
         save_tournament_mode(name)
-        if self.game is not None and not self.game.ended:
-            self.game.tournament = name
+        if self.game is not None and not self.game.ended and not self.game.tournament_auto:
+            self.game.tournament = name     # (a detected tournament stays as it is)
             self.game.version += 1
         print(f"Tournament mode: {name}" if name else "Tournament mode: off")
 
     def tournament_names(self):
         return profiles.tournament_names(self.records, self.shared)
 
-    def tournament_deck(self, name, game_id):
-        """What's known of this player's deck in the current tournament (None if nothing)."""
-        if not self.tournament:
+    def tournament_deck(self, name, game_id, tournament=None):
+        """What's known of this player's deck in this tournament (None if nothing).
+        tournament: the match's tournament (detected or manual); default = the trophy name."""
+        tournament = tournament or self.tournament
+        if not tournament:
             return None
-        return profiles.tournament_deck(self.records, name, self.tournament, exclude_game=game_id,
+        return profiles.tournament_deck(self.records, name, tournament, exclude_game=game_id,
                                         sightings=self.shared)
 
     def sync_shared(self):
@@ -166,6 +179,7 @@ class Recorder:
         self._write_raw("catchup", body)
         was_ended = self.game.ended
         self.game.feed_catchup(body)
+        self.game.detect_tournament(self.tournament_index)
         self._write_new_log_lines()
         # Saved after every update, so closing the terminal early still keeps it
         self.save_summary(quiet=was_ended or not self.game.ended)
@@ -257,6 +271,7 @@ def replay_game(raw_file):
     """Rebuild a Game from a saved raw.jsonl, without writing any files.
     (Used by  python website.py --upload-all.)"""
     deck_name, deck, unknown = read_deck_file(DECK_FILE)
+    index = TournamentIndex(SAVE_FOLDER / "tournaments")
     game = None
     for kind, data in read_replay_file(raw_file):
         if kind == "catchup":
@@ -267,6 +282,15 @@ def replay_game(raw_file):
                 game.feed_catchup(data)
         elif game is not None:
             game.feed_my_move(data[1])
+    if game is not None:
+        game.detect_tournament(index)
+        if not game.tournament_auto:
+            # tournament mode was on when it was recorded: keep that name
+            try:
+                saved = json.loads((Path(raw_file).parent / "record.json").read_text(encoding="utf-8"))
+                game.tournament = saved.get("tournament") or None
+            except (OSError, json.JSONDecodeError):
+                pass
     return game
 
 
@@ -363,6 +387,7 @@ async def run_live(show_overlay):
                 recorder.reload_saved_decks()
         elif "tournament" in json.dumps(body).lower() or "tournament" in url.lower():
             save_deck_message(url, body, "tournaments")
+            recorder.tournament_message(body)
 
     def on_request(request):
         # Your own moves:  POST https://prod.showdown.game/api/game/<gameId>/moves

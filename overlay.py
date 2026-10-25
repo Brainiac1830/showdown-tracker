@@ -26,7 +26,6 @@ import threading
 import tkinter as tk
 import urllib.request
 from tkinter import ttk
-from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -37,10 +36,12 @@ HERE = Path(__file__).resolve().parent
 ART_FOLDER = HERE / "art"                        # card pictures are downloaded here once
 SETTINGS_FILE = HERE / "overlay_settings.json"   # window places + prediction on/off
 
-WIDTH = 260                      # overlay width in pixels
-ROW = 26                         # height of one card row
+WIDTH = 220                      # overlay width in pixels
+ROW = 19                         # height of one card row
+ROW_GAP = 1                      # space between two rows
+BAR = 20                         # height of the top bar
 SORT_HIGH_FIRST = False          # True = highest chip score at the top of each stage
-STAGE_GAP = 4                    # extra space between stages (no titles: the colours show the stage)
+STAGE_GAP = 3                    # extra space between stages (no titles: the colours show the stage)
 MAX_PREDICTED = 15               # most "likely cards" rows to show
 
 # ---------- colours (red, green, blue) ----------
@@ -75,7 +76,7 @@ def font(size):
     return ImageFont.load_default()
 
 
-BIG, MID, SMALL = font(15), font(13), font(11)
+BIG, MID, SMALL = font(12), font(11), font(9)
 
 
 # ---------- card art (downloaded in the background, kept in art/) ----------
@@ -116,7 +117,7 @@ def art_strip(card):
         return None
     w, h = picture.size
     piece = picture.crop((int(w * 0.05), int(h * 0.30), int(w * 0.95), int(h * 0.50)))
-    _strips[card_id] = piece.resize((140, ROW - 2))
+    _strips[card_id] = piece.resize((110, ROW - 2))
     return _strips[card_id]
 
 
@@ -155,40 +156,40 @@ def card_row(img, d, y, card, count_text, gone=False, generated=False, predicted
         s = strip if darker == 1 else Image.eval(strip, lambda v: v // darker)
         mask = Image.linear_gradient("L").rotate(90).resize(s.size)    # dark on the left -> full on the right
         mask = Image.eval(mask, lambda v: min(255, int(v * 1.5)))
-        img.paste(s, (WIDTH - 4 - 34 - s.size[0], y + 1), mask)
+        img.paste(s, (WIDTH - 4 - 28 - s.size[0], y + 1), mask)
 
     # stage stripe on the left edge: teal for generated cards, dashed for predicted ones
     if predicted:
-        for dash in range(y, y + ROW, 6):
-            d.rectangle([4, dash, 7, min(dash + 2, y + ROW - 1)], fill=colour)
+        for dash in range(y, y + ROW, 5):
+            d.rectangle([4, dash, 6, min(dash + 2, y + ROW - 1)], fill=colour)
     else:
-        d.rectangle([4, y, 7, y + ROW - 1], fill=GENERATED if generated else (colour if not gone else DIM))
+        d.rectangle([4, y, 6, y + ROW - 1], fill=GENERATED if generated else (colour if not gone else DIM))
 
     # chip score badge, in the stage colour (outlined only for predicted cards)
-    badge = [12, y + 4, 40, y + ROW - 5]
+    badge = [9, y + 2, 33, y + ROW - 3]
     score = score_text(card.get("chips", 0))
     if predicted:
-        d.rounded_rectangle(badge, radius=5, outline=colour, width=1)
+        d.rounded_rectangle(badge, radius=4, outline=colour, width=1)
         score_colour = colour
     else:
-        d.rounded_rectangle(badge, radius=5, fill=colour if not gone else (55, 52, 70))
+        d.rounded_rectangle(badge, radius=4, fill=colour if not gone else (55, 52, 70))
         score_colour = DARK_TEXT if not gone else DIM
-    d.text(((badge[0] + badge[2]) / 2 - d.textlength(score, font=MID) / 2, y + 4), score,
+    d.text(((badge[0] + badge[2]) / 2 - d.textlength(score, font=MID) / 2, y + 2), score,
            font=MID, fill=score_colour)
 
     # name with a dark outline so it's readable over the art
-    x = 46
+    x = 38
     if generated:
-        sparkle(d, x + 5, y + ROW / 2, 6, GENERATED)
-        x += 14
-    name = fit(d, card["name"], MID, WIDTH - 42 - x)
+        sparkle(d, x + 4, y + ROW / 2, 5, GENERATED)
+        x += 11
+    name = fit(d, card["name"], MID, WIDTH - 34 - x)
     name_colour = DIM if gone else ((205, 200, 220) if predicted else TEXT)
-    d.text((x, y + 4), name, font=MID, fill=name_colour, stroke_width=2, stroke_fill=(0, 0, 0))
+    d.text((x, y + 2), name, font=MID, fill=name_colour, stroke_width=2, stroke_fill=(0, 0, 0))
 
     # count box on the right (copies left, times played, or % for a prediction)
-    d.rectangle([WIDTH - 36, y + 3, WIDTH - 7, y + ROW - 4], fill=(14, 12, 22))
+    d.rectangle([WIDTH - 29, y + 2, WIDTH - 5, y + ROW - 3], fill=(14, 12, 22))
     box_font = SMALL if predicted else MID
-    d.text((WIDTH - 21 - d.textlength(count_text, font=box_font) / 2, y + (6 if predicted else 4)),
+    d.text((WIDTH - 17 - d.textlength(count_text, font=box_font) / 2, y + (4 if predicted else 2)),
            count_text, font=box_font, fill=GUESS if predicted else (GOLD if not gone else DIM))
 
 
@@ -203,39 +204,49 @@ def group_by_stage(counter):
     return groups
 
 
-TROPHY_ZONE = (WIDTH - 52, 0, WIDTH - 30, 26)     # where the trophy button is (left, top, right, bottom)
+TROPHY_ZONE = (WIDTH - 42, 0, WIDTH - 24, BAR)     # where the trophy button is (left, top, right, bottom)
 
 
 def trophy(d, x, y, colour):
     """A small trophy cup (the font has no emoji): cup, handles, stem, base."""
-    d.pieslice([x, y - 4, x + 14, y + 10], 0, 180, fill=colour)       # the cup
-    d.rectangle([x, y + 2, x + 14, y + 3], fill=colour)
-    d.arc([x - 4, y + 1, x + 3, y + 8], 90, 270, fill=colour, width=2)       # handles
-    d.arc([x + 11, y + 1, x + 18, y + 8], 270, 90, fill=colour, width=2)
-    d.rectangle([x + 6, y + 10, x + 8, y + 13], fill=colour)           # stem
-    d.rectangle([x + 3, y + 13, x + 11, y + 15], fill=colour)          # base
+    d.pieslice([x, y - 3, x + 10, y + 7], 0, 180, fill=colour)        # the cup
+    d.rectangle([x, y + 1, x + 10, y + 2], fill=colour)
+    d.arc([x - 3, y, x + 2, y + 6], 90, 270, fill=colour, width=1)      # handles
+    d.arc([x + 8, y, x + 13, y + 6], 270, 90, fill=colour, width=1)
+    d.rectangle([x + 4, y + 7, x + 6, y + 9], fill=colour)             # stem
+    d.rectangle([x + 2, y + 9, x + 8, y + 11], fill=colour)            # base
 
 
-def title_bar(d, text, colour=TEXT, trophy_button=None):
-    """Top bar with a title and the close X. trophy_button: None = no button,
-    True / False = tournament mode on (gold) / off (grey)."""
-    d.rectangle([0, 0, WIDTH, 26], fill=PANEL)
-    room = WIDTH - (64 if trophy_button is not None else 40)
-    d.text((8, 5), fit(d, text, BIG, room), font=BIG, fill=colour)
+def title_bar(d, text, colour=TEXT, trophy_button=None, tournament=None, right=None, right_colour=GREEN):
+    """Top bar, one line: title, then the tournament in gold ("NOUS · Daily Small…"),
+    an optional number on the right (e.g. 23/30), the trophy button and the close X.
+    trophy_button: None = no button, True / False = tournament mode on (gold) / off (grey)."""
+    d.rectangle([0, 0, WIDTH, BAR], fill=PANEL)
+    end = WIDTH - (46 if trophy_button is not None else 26)        # room before the buttons
+    if right:
+        end -= d.textlength(right, font=MID) + 6
+        d.text((end + 4, 4), right, font=MID, fill=right_colour)
+    title = fit(d, text, BIG, end - 8)
+    d.text((6, 3), title, font=BIG, fill=colour)
+    if tournament:
+        x = 6 + d.textlength(title, font=BIG) + 6
+        if end - x > 30:
+            d.text((x, 5), fit(d, "· " + tournament, SMALL, end - x), font=SMALL, fill=TOURNEY)
     if trophy_button is not None:
-        trophy(d, TROPHY_ZONE[0] + 4, 7, TOURNEY if trophy_button else DIM)
-    d.line([WIDTH - 20, 8, WIDTH - 10, 18], fill=DIM, width=2)
-    d.line([WIDTH - 20, 18, WIDTH - 10, 8], fill=DIM, width=2)
-    return 32
+        trophy(d, TROPHY_ZONE[0] + 4, 6, TOURNEY if trophy_button else DIM)
+    d.line([WIDTH - 15, 6, WIDTH - 8, 13], fill=DIM, width=2)          # close X
+    d.line([WIDTH - 15, 13, WIDTH - 8, 6], fill=DIM, width=2)
+    return BAR + 4
 
 
-def tournament_banner(d, y, tournament):
-    """Gold bar: TOURNAMENT · Sunday Cup"""
-    if not tournament:
-        return y
-    d.rounded_rectangle([4, y, WIDTH - 4, y + 20], radius=4, fill=(60, 48, 20))
-    d.text((10, y + 3), fit(d, f"TOURNAMENT · {tournament}", SMALL, WIDTH - 24), font=SMALL, fill=TOURNEY)
-    return y + 26
+def section_title(d, y, left, colour, right="", right_colour=DIM):
+    """One line: a coloured section name on the left, small grey info on the right."""
+    d.line([4, y, WIDTH - 4, y], fill=colour)
+    d.text((6, y + 3), left, font=MID, fill=colour)
+    if right:
+        x = 6 + d.textlength(left, font=MID) + 6
+        d.text((x, y + 5), fit(d, right, SMALL, WIDTH - 6 - x), font=SMALL, fill=right_colour)
+    return y + 19
 
 
 def played_sections(img, d, y, counter):
@@ -247,7 +258,7 @@ def played_sections(img, d, y, counter):
             continue
         for card, n in rows:
             card_row(img, d, y, card, str(n))
-            y += ROW + 2
+            y += ROW + ROW_GAP
         y += STAGE_GAP
     return y
 
@@ -258,41 +269,38 @@ def generated_section(img, d, y, counter):
     for stage in STAGES:
         for card, n in groups.get(stage) or []:
             card_row(img, d, y, card, str(n), generated=True)
-            y += ROW + 2
+            y += ROW + ROW_GAP
     return y + 2
 
 
 def result_banner(d, y, word, colour):
-    d.rounded_rectangle([4, y, WIDTH - 4, y + 24], radius=5, fill=colour)
-    d.text((WIDTH / 2 - d.textlength(word, font=BIG) / 2, y + 3), word, font=BIG, fill=DARK_TEXT)
-    return y + 30
-
-
-def short_date(ms):
-    return datetime.fromtimestamp(ms / 1000).strftime("%d %b")
+    d.rounded_rectangle([4, y, WIDTH - 4, y + 17], radius=4, fill=colour)
+    d.text((WIDTH / 2 - d.textlength(word, font=BIG) / 2, y + 1), word, font=BIG, fill=DARK_TEXT)
+    return y + 21
 
 
 # ---------- LEFT window: my deck ----------
 
-def render_my_side(game, tournament=None):
+def render_my_side(game, tournament=None, trophy_on=None):
+    """tournament = the match's tournament (shown in the opponent's bar);
+    trophy_on = manual tournament mode (the button)."""
+    trophy_on = bool(tournament) if trophy_on is None else trophy_on
     img = Image.new("RGB", (WIDTH, 3000), BG)
     d = ImageDraw.Draw(img)
-    y = title_bar(d, game.deck_name if game and game.deck_name else "Showdown tracker",
-                  trophy_button=bool(tournament))
-    y = tournament_banner(d, y, tournament)
     zones = {"tournament": TROPHY_ZONE}
+    me = game.me if game else None
+
+    # cards left in my deck (exact count from the game when we saw the match start)
+    left_total = None
+    if me and game.deck:
+        left_total = game.cards_in_deck(me) or sum(game.cards_left(c) for c in game.deck)
+    y = title_bar(d, game.deck_name if game and game.deck_name else "Showdown tracker",
+                  trophy_button=trophy_on,
+                  right=f"{left_total}/{sum(game.deck.values())}" if left_total is not None else None)
 
     if game is None:
-        d.text((8, y), "Waiting for a match...", font=SMALL, fill=DIM)
-        return img.crop((0, 0, WIDTH, y + 22)), zones
-
-    me, opp = game.me, game.opponent()
-    left = " · ".join(x for x in (game.hand_number, game.stage) if x) or "Match found"
-    d.text((8, y), left, font=SMALL, fill=DIM)
-    if game.chips and me:
-        right = f"{game.chips.get(me, '?')} – {game.chips.get(opp, '?')}   pot {game.chips.get('Pot', '?')}"
-        d.text((WIDTH - 8 - d.textlength(right, font=SMALL), y), right, font=SMALL, fill=DIM)
-    y += 18
+        d.text((6, y), "Waiting for a match...", font=SMALL, fill=DIM)
+        return img.crop((0, 0, WIDTH, y + 16)), zones
 
     if game.ended:
         word = {"win": "VICTORY", "loss": "DEFEAT"}.get(game.result_word(), "MATCH OVER")
@@ -300,152 +308,104 @@ def render_my_side(game, tournament=None):
         y = online_status(d, y, game)
 
     if me and game.deck:
-        total = sum(game.deck.values())
-        # exact count from the game when we saw the match start, else from the list
-        left_total = game.cards_in_deck(me) or sum(game.cards_left(c) for c in game.deck)
-        d.text((8, y), f"IN DECK   {left_total}/{total}", font=MID, fill=GREEN)
-        y += 20
         groups = group_by_stage(game.deck)
         for stage in STAGES:
             rows = groups.get(stage) or []
             for card, copies in rows:
                 left_n = game.cards_left(card["id"])
                 card_row(img, d, y, card, str(left_n), gone=left_n == 0)
-                y += ROW + 2
+                y += ROW + ROW_GAP
             if rows:
                 y += STAGE_GAP
         # cards I played that aren't in my deck list (deck list out of date?)
         extra = {c: n for c, n in game.played[me].items() if c not in game.deck}
         if extra:
-            d.text((8, y), "Not in deck list", font=SMALL, fill=DIM)
-            y = played_sections(img, d, y + 16, extra)
+            d.text((6, y), "Not in deck list", font=SMALL, fill=DIM)
+            y = played_sections(img, d, y + 13, extra)
     elif me:
-        d.text((8, y), "MY CARDS PLAYED", font=MID, fill=GREEN)
-        y += 20
         if game.played[me]:
             y = played_sections(img, d, y, game.played[me])
-        else:
-            d.text((8, y), "nothing yet (open the deck screen once", font=SMALL, fill=DIM)
-            d.text((8, y + 14), "so the tracker knows your decks)", font=SMALL, fill=DIM)
-            y += 32
+        d.text((6, y), "Open the game's deck screen once to load your decks", font=SMALL, fill=DIM)
+        y += 14
     # My own generated cards aren't shown (they'd make the panel too tall).
-    return img.crop((0, 0, WIDTH, y + 6)), zones
+    return img.crop((0, 0, WIDTH, y + 4)), zones
 
 
 def online_status(d, y, game):
     status = getattr(game, "online_status", "")     # "Saved to website ✓" (see tracker.py)
     if status:
-        d.text((8, y), fit(d, status, SMALL, WIDTH - 16), font=SMALL,
+        d.text((6, y), fit(d, status, SMALL, WIDTH - 12), font=SMALL,
                fill=GREEN if "✓" in status else (GOLD if "Saving" in status else LOSS))
-        y += 16
+        y += 13
     return y
 
 
 # ---------- a player panel: the opponent (or either player when spectating) ----------
 
 def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent",
-                  tournament=None, tdeck=None, trophy_button=False):
+                  tournament=None, tdeck=None, trophy_button=False, trophy_on=None):
     """Returns (picture, click zones). Click zones: {"prediction": (top, bottom)},
     and {"tournament": (left, top, right, bottom)} when this window has the trophy button.
     tdeck = what's known of their tournament deck (profiles.tournament_deck)."""
     img = Image.new("RGB", (WIDTH, 3000), BG)
     d = ImageDraw.Draw(img)
     zones = {"tournament": TROPHY_ZONE} if trophy_button else {}
-    trophy_state = bool(tournament) if trophy_button else None
+    trophy_state = (bool(tournament) if trophy_on is None else trophy_on) if trophy_button else None
 
     if game is None or pid is None:
-        y = title_bar(d, waiting_text, OPP, trophy_state)
-        y = tournament_banner(d, y, tournament)
-        d.text((8, y), "Waiting for a match...", font=SMALL, fill=DIM)
-        return img.crop((0, 0, WIDTH, y + 22)), zones
+        y = title_bar(d, waiting_text, OPP, trophy_state, tournament)
+        d.text((6, y), "Waiting for a match...", font=SMALL, fill=DIM)
+        return img.crop((0, 0, WIDTH, y + 16)), zones
 
-    y = title_bar(d, game.name(pid).upper(), OPP, trophy_state)
-    y = tournament_banner(d, y, tournament)
-
-    # classes (left) and hand / deck counts (right)
-    classes = game.deck_classes.get(pid)
-    d.text((8, y), " / ".join(classes) if classes else "", font=SMALL, fill=DIM)
-    in_hand = game.cards_in_hand(pid) or (game.opp_hand_size if pid == game.opponent() else None)
-    if in_hand is not None:
-        in_deck = game.cards_in_deck(pid)
-        hand = f"{in_hand} in hand" + (f" · {in_deck} in deck" if in_deck else "")
-        x = WIDTH - 8 - d.textlength(hand, font=SMALL)
-        d.text((x, y), hand, font=SMALL, fill=DIM)
-        held = len(game.opp_pool) if pid == game.opponent() else 0    # generated cards they hold: "✦2"
-        if held:
-            count = str(held)
-            x -= 10 + d.textlength(count, font=SMALL)
-            sparkle(d, x, y + 6, 5, GENERATED)
-            d.text((x + 7, y), count, font=SMALL, fill=GENERATED)
-    y += 18
-
-    if game.spectating:
-        # chips, and the winner at the end
-        d.text((8, y), f"Chips {game.chips.get(pid, '?')}", font=SMALL, fill=DIM)
-        y += 16
-        if game.ended:
-            won = game.winner == pid
-            y = result_banner(d, y, "WINNER" if won else "LOST", GREEN if won else LOSS)
-            if pid == "P1":
-                y = online_status(d, y, game)
+    # Top bar: NAME · tournament, and WON / LOST when a watched match is over
+    right = None
+    if game.spectating and game.ended:
+        right = "WON" if game.winner == pid else "LOST"
+    y = title_bar(d, game.name(pid).upper(), OPP, trophy_state, tournament,
+                  right=right, right_colour=GREEN if right == "WON" else LOSS)
+    if game.spectating and game.ended and pid == "P1":
+        y = online_status(d, y, game)
 
     # ----- this match -----
-    if game.played[pid]:
-        y = played_sections(img, d, y + 2, game.played[pid])
-    elif not game.generated[pid]:
-        d.text((8, y + 2), "nothing played yet", font=SMALL, fill=DIM)
-        y += 20
+    y = played_sections(img, d, y, game.played[pid])
     y = generated_section(img, d, y, game.generated[pid])
 
     # ----- tournament deck: cards KNOWN to be in their deck (decks are locked) -----
+    # count = copies they still have this match
     known = {}
     if tournament:
-        y += 4
         if tdeck is None:
-            d.text((8, y), f"TOURNAMENT DECK: not seen in {tournament} yet", font=SMALL, fill=DIM)
-            y += 18
+            y = section_title(d, y + 2, "TOURNAMENT DECK", TOURNEY, "not seen yet")
         else:
             known = tdeck["cards"]
-            d.line([4, y, WIDTH - 4, y], fill=TOURNEY)
-            d.text((8, y + 4), "TOURNAMENT DECK", font=MID, fill=TOURNEY)
-            d.text((8, y + 22), f"{tdeck['known']}/30 cards known · from {tdeck['matches']} "
-                                f"match{'es' if tdeck['matches'] != 1 else ''}", font=SMALL, fill=DIM)
-            d.text((8, y + 36), "count = copies they still have this match", font=SMALL, fill=DIM)
-            y += 54
+            n = tdeck["matches"]
+            y = section_title(d, y + 2, "TOURNAMENT DECK", TOURNEY,
+                              f"{tdeck['known']}/30 · {n} match{'es' if n != 1 else ''}")
             groups = group_by_stage(known)
             for stage in STAGES:
                 rows = groups.get(stage) or []
                 for card, copies in rows:
                     left_n = max(0, copies - game.played[pid][card["id"]])
                     card_row(img, d, y, card, str(left_n), gone=left_n == 0)
-                    y += ROW + 2
+                    y += ROW + ROW_GAP
                 if rows:
                     y += STAGE_GAP
 
-    # ----- likely cards (from earlier matches) -----
-    y += 4
+    # ----- likely cards (from earlier matches): a guess, NOT their decklist -----
+    y += 2
     top = y
+    classes = game.deck_classes.get(pid)
     if not show_prediction:
-        d.text((8, y), "Likely cards: hidden (click to show)", font=SMALL, fill=DIM)
-        y += 18
+        d.text((6, y), "Likely cards hidden (click to show)", font=SMALL, fill=DIM)
+        y += 14
     elif not classes:
-        d.text((8, y), "LIKELY CARDS: waiting for their classes...", font=SMALL, fill=DIM)
-        y += 18
+        pass
     elif prediction is None:
-        d.text((8, y), "LIKELY CARDS", font=SMALL, fill=GUESS)
-        d.text((8, y + 14), f"No earlier matches vs {game.name(pid)}", font=SMALL, fill=DIM)
-        d.text((8, y + 28), f"on {' / '.join(classes)}", font=SMALL, fill=DIM)
-        y += 46
+        y = section_title(d, y, "LIKELY", GUESS, "no earlier matches")
     else:
         n = prediction["matches"]
-        d.line([4, y, WIDTH - 4, y], fill=GUESS)
-        d.text((8, y + 4), "LIKELY CARDS", font=MID, fill=GUESS)
-        hide = "hide"
-        d.text((WIDTH - 8 - d.textlength(hide, font=SMALL), y + 6), hide, font=SMALL, fill=DIM)
-        d.text((8, y + 22), f"NOT their decklist: played in {n} earlier", font=SMALL, fill=DIM)
-        d.text((8, y + 36), f"match{'es' if n != 1 else ''} · last seen {short_date(prediction['lastSeen'])}",
-               font=SMALL, fill=DIM)
-        y += 54
+        y = section_title(d, y, "LIKELY", GUESS, f"not their deck · {n} match{'es' if n != 1 else ''}")
+        d.text((WIDTH - 6 - d.textlength("hide", font=SMALL), top + 5), "hide", font=SMALL, fill=DIM)
         # Leave out cards they already played this match as often as ever before,
         # and cards already in the TOURNAMENT DECK above (those are certain)
         played_now = game.played[pid]
@@ -458,18 +418,14 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
             stage_rows = sorted(groups.get(stage, []), key=lambda c: (-c["percent"], card_info(c["id"])["name"]))
             for c in stage_rows:
                 card_row(img, d, y, card_info(c["id"]), f"{c['percent']}%", predicted=True)
-                y += ROW + 2
+                y += ROW + ROW_GAP
             if stage_rows:
                 y += STAGE_GAP
         if len(rows) > len(shown):
-            d.text((8, y), f"+ {len(rows) - len(shown)} more seen less often", font=SMALL, fill=DIM)
-            y += 16
-        if not rows:
-            already = "in the tournament deck or played already" if known else "played already"
-            d.text((8, y), f"all of them {already}", font=SMALL, fill=DIM)
-            y += 16
-    zones["prediction"] = (top, top + 22)
-    return img.crop((0, 0, WIDTH, y + 6)), zones
+            d.text((6, y), f"+ {len(rows) - len(shown)} more seen less often", font=SMALL, fill=DIM)
+            y += 13
+    zones["prediction"] = (top, top + 18)
+    return img.crop((0, 0, WIDTH, y + 4)), zones
 
 
 # ---------- the windows ----------
@@ -517,7 +473,7 @@ class Panel:
         moved = abs(event.x_root - self._start[0]) + abs(event.y_root - self._start[1])
         if moved >= 4:
             self.overlay.remember_place(self.name, self.window.winfo_x(), self.window.winfo_y())
-        elif event.x > WIDTH - 28 and event.y < 26:
+        elif event.x > WIDTH - 20 and event.y < BAR:
             self.overlay.quit()
         elif "tournament" in self.zones and self.zones["tournament"][0] <= event.x <= self.zones["tournament"][2] \
                 and self.zones["tournament"][1] <= event.y <= self.zones["tournament"][3]:
@@ -564,7 +520,11 @@ class Overlay:
 
     # ----- tournament mode -----
 
-    def tournament(self):
+    def tournament(self, game=None):
+        """The tournament to show: the match's own (detected, or set when it started),
+        else the manual trophy name."""
+        if game is not None and (game.tournament or game.tournament_auto):
+            return game.tournament
         return self.recorder.tournament if self.recorder else None
 
     def ask_tournament(self):
@@ -633,8 +593,10 @@ class Overlay:
         or prediction turned on/off)."""
         if self.closed:
             return
-        tournament = self.tournament()
-        key = (id(game), game.version if game else None, art_version[0], self.settings["prediction"], tournament)
+        tournament = self.tournament(game)
+        trophy_on = bool(self.tournament())      # the trophy shows the manual mode
+        key = (id(game), game.version if game else None, art_version[0], self.settings["prediction"], tournament,
+               trophy_on)
         if key == self._shown:
             return
         self._shown = key
@@ -642,15 +604,16 @@ class Overlay:
 
         def tdeck(pid):
             name = game.names.get(pid) if game and pid else None
-            return self.recorder.tournament_deck(name, game.game_id) if tournament and name else None
+            return self.recorder.tournament_deck(name, game.game_id, tournament) if tournament and name else None
 
         if game is not None and game.spectating:
             self.left.draw(*render_player(game, "P1", self._prediction_for(game, "P1"), on,
-                                          tournament=tournament, tdeck=tdeck("P1"), trophy_button=True))
+                                          tournament=tournament, tdeck=tdeck("P1"), trophy_button=True,
+                                          trophy_on=trophy_on))
             self.right.draw(*render_player(game, "P2", self._prediction_for(game, "P2"), on,
                                            tournament=tournament, tdeck=tdeck("P2")))
         else:
             opp = game.opponent() if game else None
-            self.left.draw(*render_my_side(game, tournament))
+            self.left.draw(*render_my_side(game, tournament, trophy_on))
             self.right.draw(*render_player(game, opp, self._prediction_for(game, opp), on,
                                            tournament=tournament, tdeck=tdeck(opp)))

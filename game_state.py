@@ -77,6 +77,7 @@ class Game:
         # Tournament mode (set by tracker.py): the tournament this match belongs to, or None.
         # Decks are locked in a tournament, so every card seen is part of that player's deck.
         self.tournament = None
+        self.tournament_auto = False      # True = detected from the game's tournament bracket
         self.names = {}                   # {"P1": "Brainiac", "P2": "azhh"}
         self._turn_player = None          # who the last TurnChanged was for (used for names)
 
@@ -147,6 +148,26 @@ class Game:
             self.spectating = False      # I made a move, so I'm playing after all
             self.say("Not spectating after all: you made a move")
         self.set_me(move.get("playerId"), "from a move you sent")
+
+    def detect_tournament(self, index):
+        """Look this match up in the tournament brackets (tournaments.py). A detected
+        tournament replaces the manual trophy name. Returns True if something changed."""
+        if self.tournament_auto:
+            return False
+        info = index.lookup(self.game_id, [self.names.get("P1"), self.names.get("P2")])
+        if info is None:
+            return False
+        if not info["locked"]:
+            # Decks can change between matches: known tournament decks would be wrong
+            self.say(f"Tournament {info['name']}: decks aren't locked, not used for tournament decks")
+            self.tournament_auto = True
+            self.tournament = None
+        else:
+            self.tournament = info["name"]
+            self.tournament_auto = True
+            self.say(f"Tournament detected: {info['name']}")
+        self.version += 1
+        return True
 
     def start_spectating(self, why):
         if not self.spectating:

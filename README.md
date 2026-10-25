@@ -103,8 +103,12 @@ their deck. Scout your future opponents by watching their matches:
    this match. LIKELY CARDS below it only guesses the rest.
 4. Click the trophy again > **Stop tournament mode** when the tournament is over.
 The website's **Tournaments** page lists each tournament's players with their known deck ("14/30 known").
-The tracker also saves game messages that mention tournaments in `games\tournaments\`, to learn to detect
-tournaments by itself later.
+**Automatic detection:** when you open a tournament in the game (e.g. to spectate a table), the game sends
+its bracket. The tracker saves it in `games\tournaments\` and from then on recognises that tournament's
+matches by itself (by game id, or by the two players for games 2 and 3 of a best-of-3), using the
+**official name**, e.g. *Daily Small Stakes ($10 GTD) BO3 #9*. The banner then says **auto**. Only tournaments
+with locked decks (`deckType: PerTournament`) count. The trophy name is only used when nothing is detected.
+Every game id seen in a bracket is remembered in `games\tournaments\known_games.json`.
 
 ## Website (match history)
 Site: https://brainiac1830.github.io/showdown-tracker/ (files in `docs\`).
