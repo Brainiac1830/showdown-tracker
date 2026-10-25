@@ -74,6 +74,9 @@ class Game:
         # Spectating: I'm watching two other players. Then there's no "me": both
         # players are tracked like opponents (only cards they play are visible).
         self.spectating = False
+        # Tournament mode (set by tracker.py): the tournament this match belongs to, or None.
+        # Decks are locked in a tournament, so every card seen is part of that player's deck.
+        self.tournament = None
         self.names = {}                   # {"P1": "Brainiac", "P2": "azhh"}
         self._turn_player = None          # who the last TurnChanged was for (used for names)
 
@@ -615,6 +618,7 @@ class Game:
             "myGenerated": dict(self.generated[me]),
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
+            "tournament": self.tournament or "",
         }
 
     def spectated_record(self):
@@ -631,6 +635,7 @@ class Game:
             "result": "spectated",
             "winner": self.names.get(self.winner) or "",
             "players": [player("P1"), player("P2")],
+            "tournament": self.tournament or "",
             "hands": [{"hand": h["hand"] or "", "winner": self.names.get(h["winner"]) or "split",
                        "p1Hand": h["myHand"] or "", "p2Hand": h["opponentHand"] or ""}
                       for h in self.hand_results],

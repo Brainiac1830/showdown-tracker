@@ -46,6 +46,8 @@ DECK_FILE = HERE / "deck.txt"
 SAVED_DECKS_FILE = SAVE_FOLDER / "decks" / "Decks_compact.json"
 # Everyone's shared player sightings, downloaded from the website (see website.py)
 SHARED_FILE = SAVE_FOLDER / "shared_sightings.json"
+# Tournament mode: the tournament you're in (set with the trophy button on the overlay)
+TOURNAMENT_FILE = HERE / "tournament_mode.json"
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
 SAVE_ONLINE = True
@@ -84,6 +86,7 @@ class Recorder:
         # Earlier finished matches (games/*/record.json), for the "likely cards" prediction
         self.records = []
         self.shared = profiles.load_shared(SHARED_FILE)      # last download, works offline
+        self.tournament = load_tournament_mode()
         if not folder_prefix:
             backfill_records()
             self.records = profiles.load_records(SAVE_FOLDER)
@@ -93,6 +96,29 @@ class Recorder:
     def predict(self, name, classes, game_id):
         """What this player played in earlier matches with these classes (see profiles.py)."""
         return profiles.predict(self.records, name, classes, exclude_game=game_id, sightings=self.shared)
+
+    # ----- tournament mode (the overlay's trophy button calls these) -----
+
+    def set_tournament(self, name):
+        """Turn tournament mode on (a name) or off (None). The match being played or
+        watched right now counts too, if it isn't over yet."""
+        name = " ".join((name or "").split())[:60] or None
+        self.tournament = name
+        save_tournament_mode(name)
+        if self.game is not None and not self.game.ended:
+            self.game.tournament = name
+            self.game.version += 1
+        print(f"Tournament mode: {name}" if name else "Tournament mode: off")
+
+    def tournament_names(self):
+        return profiles.tournament_names(self.records, self.shared)
+
+    def tournament_deck(self, name, game_id):
+        """What's known of this player's deck in the current tournament (None if nothing)."""
+        if not self.tournament:
+            return None
+        return profiles.tournament_deck(self.records, name, self.tournament, exclude_game=game_id,
+                                        sightings=self.shared)
 
     def sync_shared(self):
         """Download new shared sightings, in the background."""
@@ -109,6 +135,7 @@ class Recorder:
     def _start_game(self, game_id):
         self.finish()  # save the previous match if there was one
         self.game = Game(game_id, self.deck, self.deck_name, self.saved_decks)
+        self.game.tournament = self.tournament
         stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
         self.folder = SAVE_FOLDER / f"{self.folder_prefix}{stamp}_{game_id[:8]}"
         self.folder.mkdir(parents=True, exist_ok=True)
@@ -199,6 +226,17 @@ class Recorder:
             self.save_summary()
 
 
+def load_tournament_mode():
+    try:
+        return json.loads(TOURNAMENT_FILE.read_text(encoding="utf-8")).get("name") or None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_tournament_mode(name):
+    TOURNAMENT_FILE.write_text(json.dumps({"name": name}), encoding="utf-8")
+
+
 def save_record(folder, record):
     with open(Path(folder) / "record.json", "w", encoding="utf-8") as f:
         json.dump(record, f, indent=1, ensure_ascii=False)
@@ -232,16 +270,22 @@ def replay_game(raw_file):
     return game
 
 
-def save_deck_message(url, body):
-    """Keep the game's deck messages (deck screen, card list) for the future
-    deck import. Saved in games/decks/, newest copy per address."""
-    folder = SAVE_FOLDER / "decks"
+def save_deck_message(url, body, folder_name="decks"):
+    """Keep a game message: deck messages (deck screen, card list) in games/decks/,
+    tournament messages in games/tournaments/. Newest copy per address."""
+    folder = SAVE_FOLDER / folder_name
     folder.mkdir(parents=True, exist_ok=True)
-    name = url.split("?")[0].split("/api/")[-1].replace("/", "_") or "decks"
+    name = url.split("?")[0].split("/api/")[-1].replace("/", "_") or folder_name
     with open(folder / f"{name}.json", "w", encoding="utf-8") as f:
         json.dump({"url": url.split("?")[0], "savedAt": time.strftime("%Y-%m-%d %H:%M:%S"),
                    "body": body}, f, indent=2, ensure_ascii=False)
-    print(f"(saved deck message: {name})")
+    if folder_name == "decks":
+        print(f"(saved deck message: {name})")
+
+
+# Game messages that may say a match is part of a tournament. Saved (only when they
+# mention "tournament") so the tracker can later learn to detect tournaments by itself.
+TOURNAMENT_HINTS = ("tournament", "findmatch", "matchstatus", "getgamedetails", "lobbystatus")
 
 
 # ----------------------------- live (browser) -----------------------------
@@ -304,7 +348,8 @@ async def run_live(show_overlay):
             return
         is_catchup = "/catchup" in url
         is_deck = "deck" in url.lower()
-        if not (is_catchup or is_deck):
+        maybe_tournament = any(hint in url.lower() for hint in TOURNAMENT_HINTS)
+        if not (is_catchup or is_deck or maybe_tournament):
             return
         try:
             body = await response.json()
@@ -312,10 +357,12 @@ async def run_live(show_overlay):
             return  # page changed before we could read it
         if is_catchup:
             recorder.handle_catchup(body)
-        else:
+        elif is_deck:
             save_deck_message(url, body)
             if url.split("?")[0].endswith("/Decks/compact"):
                 recorder.reload_saved_decks()
+        elif "tournament" in json.dumps(body).lower() or "tournament" in url.lower():
+            save_deck_message(url, body, "tournaments")
 
     def on_request(request):
         # Your own moves:  POST https://prod.showdown.game/api/game/<gameId>/moves
@@ -349,7 +396,7 @@ async def run_live(show_overlay):
         overlay = None
         if show_overlay:
             from overlay import Overlay
-            overlay = Overlay(on_quit=stop.set, predict=recorder.predict)
+            overlay = Overlay(on_quit=stop.set, predict=recorder.predict, recorder=recorder)
 
         try:
             while not stop.is_set():
@@ -433,7 +480,7 @@ def run_replay(path, show_overlay):
     if show_overlay:
         from overlay import Overlay
         closed = []
-        overlay = Overlay(on_quit=lambda: closed.append(True), predict=recorder.predict)
+        overlay = Overlay(on_quit=lambda: closed.append(True), predict=recorder.predict, recorder=recorder)
         print("Overlay open. Click ✕ on it to finish.")
         while not closed:
             overlay.show(recorder.game)

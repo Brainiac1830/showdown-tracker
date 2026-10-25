@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tournaments | Showdown Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Showdown <span>Tracker</span></h1>
+  </header>
+
+  <!-- The menu. class="active" highlights the page you're on. -->
+  <nav class="main-nav">
+    <a href="index.html">Home</a>
+    <a href="match-history.html">Match History</a>
+    <a href="players.html">Players</a>
+    <a href="tournaments.html" class="active">Tournaments</a>
+    <a href="tools.html">Tools</a>
+    <!-- Sign in / sign out. Filled in by firebase.js -->
+    <div class="auth-area" id="auth-area"></div>
+  </nav>
+
+  <main>
+    <p class="page-status" id="page-status"></p>
+
+    <div class="history-filters">
+      <select id="tournament-pick" title="Tournament"></select>
+      <input type="search" id="player-search" class="text-input" placeholder="Search a player..." autocomplete="off">
+    </div>
+
+    <p class="dim small">Decks are locked during a tournament, so every card seen in a player's tournament matches
+      is in their deck. Matches count when the tracker was in <b>tournament mode</b> (trophy button on the overlay),
+      for you or anyone else who shared them.</p>
+
+    <!-- The players of the chosen tournament (filled by tournaments.js) -->
+    <div id="tournament-players"></div>
+  </main>
+
+  <script src="cards.js"></script>
+  <script src="common.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="tournaments.js"></script>
+</body>
+
+</html>

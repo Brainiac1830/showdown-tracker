@@ -26,11 +26,17 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 - Spectating: `viewerRole` 2 (players are 0 = P1, 1 = P2). Snapshot of a joined-midway match has `SetGameLogItems` with the whole log so far + named discard/cast cards; hand results only from joining on. Spectated website record: `{spectated: true, result: "spectated", winner, players: [{name, classes, chips, cards, generated}], hands: [{hand, winner, p1Hand, p2Hand}]}`.
 - Website pages: Home (own matches only), Match History (filter "Watched matches"), Players (`players.js`: own matches + shared sightings via `loadSightings()` incremental cache, same % logic as `profiles.predict`, hides my own names), Tools (Create key, setup steps for others).
 
+## Tournament mode
+- Trophy button (left overlay window) -> `Recorder.set_tournament(name)` (saved in `tournament_mode.json`, gitignored); `Game.tournament` goes into the match record and into shared sightings (`tournament` field, allowed by firestore.rules).
+- `profiles.tournament_deck()`: union of cards a player played in that tournament (max copies per match), my records + shared; names compared with `tournament_key()` (lower case, single spaces). Overlay right window: TOURNAMENT DECK with copies left this match; LIKELY CARDS skips known cards. Website `tournaments.html/js` (same logic).
+- Tracker saves API responses mentioning "tournament" (urls in `TOURNAMENT_HINTS`) to `games/tournaments/` to learn auto-detection later: check them after the first real tournament match.
+
 ## Testing
 - `python tracker.py --replay games\<folder>\raw.jsonl --no-overlay` (regression check on real matches).
 - Website: copy `docs` to a temp folder, replace `firebase.js`/`database.js` with stubs that return `website_record()`s, serve with `python -m http.server`, check in the browser pane.
 
 ## Status (2026-10-25)
+- Tournament mode built and tested with a made-up tournament (stubs/fakes); needs: updated rules published (tournament field), push, a real tournament match to check `games/tournaments/`.
 - Opening to everyone: code done (rules, Tools page, sharing, Players merge), tested with fakes/stubs only. **Waiting on Olivier to create the separate Firebase project `showdown-tracker`** (README > One-time setup), then new firebase-config.js values, new key, `--upload-all`. Until then the site still points at the Origins project.
 - Website published (GitHub repo Brainiac1830/showdown-tracker, public, Pages from `/docs`); key copied; 7 matches uploaded. `python website.py --upload-all --replace` re-saves old matches after tracker logic changes.
 - Rules question: unclear if Showdown's terms allow trackers (real money). Advised: check ToS / ask them, use in free matches until then, no cross-match opponent profiles in the overlay.

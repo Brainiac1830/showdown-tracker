@@ -8,7 +8,8 @@
 //   - Your matches (users/<you>/...) can only be read and changed by you.
 //   - Player sightings (showdown_sightings) are shared: every signed-in player can
 //     read them all and add new ones, but only the one who added a sighting can
-//     change or delete it.
+//     change or delete it. A sighting can carry a tournament name: decks are
+//     locked during a tournament, so those build each player's tournament deck.
 // ============================================================
 
 rules_version = '2';
@@ -28,7 +29,7 @@ service cloud.firestore {
     // Document name: <game id>_<player name in lower case>, so the same match is only stored once.
     function validSighting() {
       let d = request.resource.data;
-      return d.keys().hasOnly(["gameId", "name", "nameKey", "classes", "classKey", "cards", "playedAt", "savedAt", "by"])
+      return d.keys().hasOnly(["gameId", "name", "nameKey", "classes", "classKey", "cards", "playedAt", "savedAt", "by", "tournament"])
         && d.by == request.auth.uid                      // you can only add sightings as yourself
         && d.gameId is string && d.gameId.size() <= 64
         && d.savedAt == request.time                     // saved "now" (by the server's clock)
@@ -37,7 +38,9 @@ service cloud.firestore {
         && d.classes is list && d.classes.size() <= 2
         && d.classKey is string && d.classKey.size() <= 40
         && d.cards is map && d.cards.size() <= 40
-        && d.playedAt is int;
+        && d.playedAt is int
+        // optional: the tournament it was played in (tournament mode in the tracker)
+        && (!("tournament" in d) || (d.tournament is string && d.tournament.size() <= 60));
     }
 
     match /showdown_sightings/{sightingId} {

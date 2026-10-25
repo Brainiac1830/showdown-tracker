@@ -96,6 +96,11 @@ def request(url, data=None, token=None, form=False):
             pass
         if error.code == 409 or "ALREADY_EXISTS" in str(detail):
             raise AlreadySaved()
+        if "PROJECT_NUMBER_MISMATCH" in str(detail):
+            # The key was made on a page that still used another Firebase project
+            # (e.g. a cached old version of the site)
+            raise RuntimeError("tracker_key.txt was made for another Firebase project. Open the website in a "
+                               "private window (Ctrl+Shift+N), sign in, and create a new key on the Tools page.")
         raise RuntimeError(f"{error.code}: {detail}")
 
 
@@ -188,7 +193,8 @@ def save_match(record, replace=False):
 # ---------- 3b. SHARED PLAYER SIGHTINGS ----------
 # What we saw other players play, shared with everyone who uses the site:
 #   showdown_sightings/<game id>_<player name>  =
-#   {gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by}
+#   {gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by,
+#    tournament (only in tournament mode)}
 # Only opponents (and both players of a spectated match): my own deck is never shared.
 # The rules (firestore.rules) let everyone read and add them; only the one who
 # added a sighting can change it.
@@ -218,6 +224,8 @@ def share_sightings(record, replace=False):
             "cards": {card: n for card, n in a["cards"].items() if n > 0},
             "playedAt": int(a["playedAt"]), "by": uid,
         }
+        if record.get("tournament"):
+            fields["tournament"] = record["tournament"][:60]
         write = {"update": {"name": doc_name(f"{SIGHTINGS}/{sighting_id(record['gameId'], name)}"),
                             "fields": {k: to_value(v) for k, v in fields.items()}},
                  "updateTransforms": [{"fieldPath": "savedAt", "setToServerValue": "REQUEST_TIME"}]}

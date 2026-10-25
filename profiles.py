@@ -34,7 +34,8 @@ def appearances(record):
     for p in players:
         if p.get("name") and p.get("name") != "?":
             yield {"name": p["name"], "classes": p.get("classes") or [], "cards": p.get("cards") or {},
-                   "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId")}
+                   "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
+                   "tournament": record.get("tournament") or ""}
 
 
 def all_appearances(records, sightings=()):
@@ -48,7 +49,8 @@ def all_appearances(records, sightings=()):
         key = (s.get("gameId"), (s.get("name") or "").lower())
         if s.get("name") and key not in found:
             found[key] = {"name": s["name"], "classes": s.get("classes") or [], "cards": s.get("cards") or {},
-                          "playedAt": s.get("playedAt") or 0, "gameId": s.get("gameId")}
+                          "playedAt": s.get("playedAt") or 0, "gameId": s.get("gameId"),
+                          "tournament": s.get("tournament") or ""}
     return list(found.values())
 
 
@@ -75,6 +77,45 @@ def predict(records, name, classes, exclude_game=None, sightings=()):
              for c, k in seen.items()]
     cards.sort(key=lambda c: (-c["seen"], c["id"]))
     return {"matches": len(found), "lastSeen": max(a["playedAt"] for a in found), "cards": cards}
+
+
+# ---------- Tournaments: decks are locked, so every card seen is in the deck ----------
+
+def tournament_key(name):
+    """"Sunday  Cup " and "sunday cup" are the same tournament."""
+    return " ".join((name or "").split()).lower()
+
+
+def tournament_names(records, sightings=()):
+    """Every tournament name seen (mine and shared), the most recent first."""
+    newest = {}
+    for a in all_appearances(records, sightings):
+        key = tournament_key(a.get("tournament"))
+        if key and (key not in newest or a["playedAt"] > newest[key][0]):
+            newest[key] = (a["playedAt"], a["tournament"].strip())
+    return [name for _, name in sorted(newest.values(), reverse=True)]
+
+
+def tournament_deck(records, name, tournament, exclude_game=None, sightings=()):
+    """The cards this player is KNOWN to have in their deck for this tournament:
+    everything they played in that tournament (mine + shared), with the most
+    copies seen in one match. Generated cards are not in "cards", so they never count.
+    Returns None if they weren't seen in that tournament, else
+      {"matches": 3, "classes": [...], "cards": {card_id: copies}, "known": 14, "lastSeen": ms}"""
+    if not name or not tournament_key(tournament):
+        return None
+    found = [a for a in all_appearances(records, sightings)
+             if a["gameId"] != exclude_game and a["name"].lower() == name.lower()
+             and tournament_key(a.get("tournament")) == tournament_key(tournament)]
+    if not found:
+        return None
+    cards = Counter()
+    for a in found:
+        for card_id, n in a["cards"].items():
+            cards[card_id] = max(cards[card_id], n)
+    newest = max(found, key=lambda a: a["playedAt"])
+    return {"matches": len(found), "classes": newest["classes"], "cards": dict(cards),
+            "known": sum(cards.values()), "lastSeen": newest["playedAt"]}
 
 
 def load_records(save_folder):

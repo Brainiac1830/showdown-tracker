@@ -91,6 +91,21 @@ The match is saved in `games\<date>_<game id>\`:
 - `summary.json`: opponent, result, cards played by each side
 - `raw.jsonl`: every server message, untouched. **Send me this one** when something looks wrong.
 
+## Tournament mode
+Decks are locked during a tournament, so every card a player plays in their tournament matches IS in
+their deck. Scout your future opponents by watching their matches:
+1. Click the **trophy** in the left overlay window (top bar) > type or pick the tournament name > **Start**.
+   A gold **TOURNAMENT** banner shows on both windows. (The name list has earlier names, so everyone uses
+   the same spelling; capital letters and extra spaces don't matter.)
+2. Every match you **watch or play** while it's on is saved with that tournament name, and shared.
+3. When you play someone from that tournament, the right window shows **TOURNAMENT DECK**: every card
+   seen from them in that tournament (by you or anyone who shared it), with the copies they still have
+   this match. LIKELY CARDS below it only guesses the rest.
+4. Click the trophy again > **Stop tournament mode** when the tournament is over.
+The website's **Tournaments** page lists each tournament's players with their known deck ("14/30 known").
+The tracker also saves game messages that mention tournaments in `games\tournaments\`, to learn to detect
+tournaments by itself later.
+
 ## Website (match history)
 Site: https://brainiac1830.github.io/showdown-tracker/ (files in `docs\`).
 **Anyone can sign in with Google.** Each person's match history is private; what their trackers
@@ -99,6 +114,7 @@ saw other players play is **shared** (Players page + overlay "likely cards").
 - **Home**: record, win rate, win rate per deck, per opponent class pair, opponent cards seen most.
 - **Match History**: every match (search a player, filter by deck / result; "Watched matches" = spectated).
 - **Players**: everyone you played or watched + players others shared. Per class pair: likely cards with %.
+- **Tournaments**: per tournament, each player's known deck (decks are locked in a tournament).
 - **Tools**: create your tracker key, and steps for other players to get the tracker.
 
 ### Data (Firebase project "showdown-tracker")
