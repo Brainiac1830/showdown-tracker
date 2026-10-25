@@ -45,7 +45,7 @@ function classTags(classes) {
 
 // ---------- Card bars (same look as the tracker overlay) ----------
 // One bar: stage stripe, chip score badge, name, card art faded in, count.
-// kind: "" (normal), "generated" (bright ✦) or "maybe" (faded ✦)
+// kind: "" (normal) or "generated" (✦)
 function cardBar(card, count, kind) {
   const mark = kind ? `<span class="spark ${kind}">✦</span>` : "";
   const art = card.art ? `style="--art: url('${card.art}')"` : "";

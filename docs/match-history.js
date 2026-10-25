@@ -2,7 +2,7 @@
 // match-history.js — the Match History page.
 // Every match, newest first: result, my deck, opponent, final chips, date.
 // Click a match to see each hand and the cards both of you played
-// (coloured by stage like the overlay, ✦ = generated, faded ✦ = maybe generated).
+// (coloured by stage like the overlay, ✦ = generated during the match).
 // ============================================================
 
 import { watchUser } from "./firebase.js";
@@ -137,12 +137,11 @@ function detailsHtml(match) {
       </div>
       <div>
         <p class="details-title">${escapeHtml(match.opponent)} played</p>
-        <div class="card-list">${cardBars(match.opponentCards,
-          [[match.opponentGenerated || {}, "generated"], [match.opponentMaybe || {}, "maybe"]])}</div>
+        <div class="card-list">${cardBars(match.opponentCards, [[match.opponentGenerated || {}, "generated"]])}</div>
       </div>
     </div>
     <div class="details-footer">
-      <span class="dim small">✦ generated during the match · faded ✦ maybe generated</span>
+      <span class="dim small">✦ generated during the match</span>
       <button class="btn btn-danger" data-action="delete">Delete</button>
     </div>`;
 }

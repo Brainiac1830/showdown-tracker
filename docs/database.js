@@ -13,7 +13,7 @@
 //     myClasses: [..], opponentClasses: [..], myChips, opponentChips,
 //     hands: [{hand, won: me|opponent|split, myHand, opponentHand}],
 //     startingHand: [card ids],
-//     myCards / myGenerated / opponentCards / opponentGenerated / opponentMaybe: {card id: times} }
+//     myCards / myGenerated / opponentCards / opponentGenerated: {card id: times} }
 //
 // ---------- Staying inside the free plan ----------
 // Every document downloaded counts as 1 read (50,000 free per day). So the browser

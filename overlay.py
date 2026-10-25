@@ -39,7 +39,6 @@ GREEN = (70, 220, 140)
 LOSS = (235, 80, 95)
 OPP = (255, 120, 120)            # opponent header
 GENERATED = (80, 220, 205)       # teal: cards made during the match
-MAYBE = (45, 110, 105)           # faded teal: opponent cards that were maybe generated
 STAGE_COLOURS = {
     "Any": (150, 150, 165),      # Universal: grey
     "PreFlop": (70, 140, 240),   # Pre-flop: blue
@@ -138,8 +137,8 @@ def card_row(img, d, y, card, count_text, gone=False, generated=False):
         mask = Image.eval(mask, lambda v: min(255, int(v * 1.5)))
         img.paste(s, (WIDTH - 4 - 26 - s.size[0], y + 1), mask)
 
-    # stage stripe on the left edge (teal for generated cards, faded teal for "maybe")
-    mark = MAYBE if generated == "maybe" else GENERATED
+    # stage stripe on the left edge (teal for generated cards)
+    mark = GENERATED
     d.rectangle([4, y, 7, y + ROW - 1], fill=mark if generated else (colour if not gone else DIM))
 
     # chip score badge, in the stage colour
@@ -275,10 +274,10 @@ def render(game):
             y += 16
         if game.played[opp]:
             y = played_sections(img, d, y + 2, game.played[opp])
-        elif not game.generated[opp] and not game.maybe_generated[opp]:
+        elif not game.generated[opp]:
             d.text((8, y + 2), "nothing played yet", font=SMALL, fill=DIM)
             y += 20
-        y = generated_section(img, d, y, game.generated[opp], game.maybe_generated[opp])
+        y = generated_section(img, d, y, game.generated[opp])
 
     return img.crop((0, 0, WIDTH, y + 6))
 
@@ -300,15 +299,13 @@ def played_sections(img, d, y, counter, header=None):
     return y
 
 
-def generated_section(img, d, y, counter, maybe=None):
-    """Cards that were made during the match: teal stripe and a ✦, after the others.
-    "maybe" cards (opponent only) get a faded ✦ and come after the sure ones."""
-    for cards, kind in ((counter, True), (maybe or {}, "maybe")):
-        groups = group_by_stage(cards)
-        for stage in STAGES:
-            for card, n in groups.get(stage) or []:
-                card_row(img, d, y, card, str(n), generated=kind)
-                y += ROW + 2
+def generated_section(img, d, y, counter):
+    """Cards that were made during the match: teal stripe and a ✦, after the others."""
+    groups = group_by_stage(counter)
+    for stage in STAGES:
+        for card, n in groups.get(stage) or []:
+            card_row(img, d, y, card, str(n), generated=True)
+            y += ROW + 2
     return y + 2
 
 

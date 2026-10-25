@@ -20,7 +20,7 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 - `/catchup` answer: `{snapshot, batches:[{moveIndex, eventData: "<JSON list>"}], status:{gameId, viewerRole, status:{result, serverNow...}}}`. Snapshot has `initEventData` (start state: CreateCard for decks/hands, SetPlayerDeckClasses, SetGameLogItems).
 - `AddGameLogItem` = game log (CardPlayed, Check, PhaseChanged, CardsTargeted, Showdown, Fold), with `P1HandCards/P2HandCards`, `ChipsAfter`. `EndHand` (hand result), `EndGame` (WinnerId) = match end. Status `result`: 3 waiting, 2 playing, 0 over.
 - Card tracking by game card id: CreateCard/MoveCards/DestroyCard/UpdateCardVisibility. My draws = my deck card ids moving to `P1_Hand`. Opponent hidden cards get **new ids on every hand change** (can't follow one card).
-- Generated cards: `Slots: [{"Type":"Generated"}]`, visible only to the owner. For the opponent: off-class rule, hand-arrival counting (arrived − drawn), "maybe" when a held generated card fits (GENERATORS), backcheck by copy limit (Rare 1, Common 2).
+- Generated cards: `AnimateCard` with `Info.animationId == "generatedCard"` on the card id = the lighter border, sent to **both** players (found 2026-10-25; matched every generated card in 10 matches). My own cards also have `Slots: [{"Type":"Generated"}]`. The class rule and "maybe" guesses were removed. Backcheck by copy limit (Rare 1, Common 2) stays. Opponent's held generated count = hand arrivals − deck draws.
 - My deck = the saved deck whose 2 classes match the match (`pick_deck`).
 
 ## Testing
@@ -28,5 +28,5 @@ Showdown (https://play.showdown.game): browser poker + action cards, 1v1, first 
 - Website: copy `docs` to a temp folder, replace `firebase.js`/`database.js` with stubs that return `website_record()`s, serve with `python -m http.server`, check in the browser pane.
 
 ## Status (2026-10-25)
-- Website built and tested locally with stubbed data, **not yet published or tested against real Firebase**. Next: copy tracker_key.txt, `python website.py`, `--upload-all`, publish repo + Pages (/docs).
+- Website published (GitHub repo Brainiac1830/showdown-tracker, public, Pages from `/docs`); key copied; 7 matches uploaded. `python website.py --upload-all --replace` re-saves old matches after tracker logic changes.
 - Rules question: unclear if Showdown's terms allow trackers (real money). Advised: check ToS / ask them, use in free matches until then, no cross-match opponent profiles in the overlay.

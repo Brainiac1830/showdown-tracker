@@ -28,21 +28,20 @@ BY_ID = {c["id"]: c for c in ALL_CARDS}
 BY_NAME = {c["name"].lower(): c for c in ALL_CARDS}
 
 
-# Cards that put new cards in their owner's hand, and what those cards can be.
-# (From the card texts in cards.json. Used to guess which of the opponent's
-#  plays were generated, since the game hides that mark on their cards.)
+# Cards that put new cards in their owner's hand (from the card texts), and what
+# they give. Only used to say where the opponent's generated cards came from.
 GENERATORS = {
-    "salvaged_goods": lambda c: c["type"] == "Flop",            # "Get that many Flop action cards plus 1"
-    "chain_reaction": lambda c: c["type"] == "PreFlop",         # "Get 3 random Preflop action cards"
-    "eureka": lambda c: c["type"] == "River",                   # "get 3 random River action cards"
-    "high_hand_bonus": lambda c: c["type"] == "River",          # "Get a random River action card"
-    "wash_ashore": lambda c: c["type"] in ("Any", "River"),     # "Get a random Universal or River action card"
-    "cinch": lambda c: "Backfire" in (c.get("text") or ""),     # "Get a random action card with Backfire"
-    "comeback_chance": lambda c: c["id"] == "roulette",         # "Get a Roulette"
-    "card_protector": lambda c: c["id"] == "card_protector",    # "If you win showdown, get Card Protector"
-    "prototype": lambda c: c["id"] == "prototype",              # "If you win the pot, get Prototype"
-    "spiraling_debt": lambda c: c["id"] == "spiraling_debt",    # "If you lose showdown, get Spiraling Debt"
-    "all_in": lambda c: True,                                   # "Get a random action card"
+    "salvaged_goods": "Flop action cards",
+    "chain_reaction": "3 Pre-flop action cards",
+    "eureka": "3 River action cards",
+    "high_hand_bonus": "a River action card",
+    "wash_ashore": "a Universal or River action card",
+    "cinch": "an action card with Backfire",
+    "comeback_chance": "a Roulette",
+    "card_protector": "Card Protector",
+    "prototype": "Prototype",
+    "spiraling_debt": "Spiraling Debt",
+    "all_in": "a random action card",
 }
 
 
@@ -51,12 +50,6 @@ def max_copies(card):
     (Seen in all 9 decks on 2026-10-24: 92 Rares, all 1 copy; Commons 1 or 2.)
     So a 2nd Rare or a 3rd Common in one match must have been generated."""
     return 1 if card.get("rarity") == "Rare" else 2
-
-
-def could_make(generator_id, card):
-    """Could this generator card have made this card? (unknown generator = yes)"""
-    rule = GENERATORS.get(generator_id)
-    return True if rule is None else rule(card)
 
 
 def find_card(text):

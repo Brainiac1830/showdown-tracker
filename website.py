@@ -15,6 +15,10 @@
 # Commands:
 #   python website.py                test the link (reads, saves nothing)
 #   python website.py --upload-all   save every finished match in games\ that isn't online yet
+#   python website.py --upload-all --replace
+#                                    same, but also re-save the matches already online
+#                                    (after the tracker learned something new, e.g. the
+#                                    lighter "generated" border on 2026-10-25)
 # ============================================================
 
 import base64
@@ -139,19 +143,22 @@ def to_value(value):
 
 # ---------- 3. SAVING A MATCH ----------
 
-def save_match(record):
+def save_match(record, replace=False):
     """Saves one match (Game.website_record()). Returns True if saved,
-    False if it was saved already. Raises RuntimeError with a readable message."""
+    False if it was saved already (unless replace=True: then it's overwritten).
+    Raises RuntimeError with a readable message."""
     if record.get("result") not in ("win", "loss"):
         raise RuntimeError("The match has no result yet.")
     uid = read_key()["uid"]
-    writes = [{
-        # 1. the match, named after the game id. "exists: False" = refuse if it's there already
+    match_write = {
+        # 1. the match, named after the game id
         "update": {"name": doc_name(f"users/{uid}/{FOLDER}/{record['gameId']}"),
                    "fields": {k: to_value(v) for k, v in record.items()}},
         "updateTransforms": [{"fieldPath": "savedAt", "setToServerValue": "REQUEST_TIME"}],
-        "currentDocument": {"exists": False},
-    }, {
+    }
+    if not replace:
+        match_write["currentDocument"] = {"exists": False}    # = refuse if it's there already
+    writes = [match_write, {
         # 2. "Showdown matches changed" stamp (only this field: the Origins site's stay as they are)
         "update": {"name": doc_name(f"users/{uid}/meta/lastChange"),
                    "fields": {"showdownMatches": to_value(int(time.time() * 1000))}},
@@ -179,8 +186,9 @@ def count_saved():
 
 # ---------- 4. UPLOADING OLD MATCHES ----------
 
-def upload_all():
-    """Replays every match folder in games\\ and saves the finished ones."""
+def upload_all(replace=False):
+    """Replays every match folder in games\\ and saves the finished ones
+    (replace=True: also re-save the ones already online)."""
     from tracker import SAVE_FOLDER, replay_game     # here, not at the top: tracker.py imports this file
     folders = sorted(p for p in SAVE_FOLDER.glob("*/raw.jsonl")
                      if not p.parent.name.startswith(("replay_", "test_")))
@@ -191,7 +199,7 @@ def upload_all():
             print(f"  {name}: not finished, skipped")
             continue
         try:
-            saved = save_match(game.website_record())
+            saved = save_match(game.website_record(), replace)
             print(f"  {name}: {'saved' if saved else 'already online'} "
                   f"({game.result_word()} vs {game.name(game.opponent())})")
         except RuntimeError as error:
@@ -205,7 +213,7 @@ if __name__ == "__main__":
     try:
         if "--upload-all" in sys.argv:
             print("Uploading finished matches from games\\ ...")
-            upload_all()
+            upload_all(replace="--replace" in sys.argv)
         print(f"Linked ✓  ({read_key().get('email', '?')}) - {count_saved()} Showdown matches online")
     except Exception as error:
         print("The link didn't work:", error)

@@ -250,8 +250,7 @@ h1 span { color: var(--yellow); }
 .stage-PreFlop { --stage: var(--stage-preflop); }
 .stage-Flop    { --stage: var(--stage-flop); }
 .stage-River   { --stage: var(--stage-river); }
-.card-bar.generated, .card-bar.maybe { border-left-color: var(--generated); }
-.card-bar.maybe { border-left-color: #2d6e69; }
+.card-bar.generated { border-left-color: var(--generated); }
 
 .card-score {
   min-width: 26px;
@@ -270,7 +269,6 @@ h1 span { color: var(--yellow); }
 }
 
 .spark { color: var(--generated); margin-right: 4px; }
-.spark.maybe { color: #2d6e69; }
 
 .card-count {
   min-width: 20px;

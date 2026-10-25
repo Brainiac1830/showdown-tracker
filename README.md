@@ -63,15 +63,10 @@ The server never sends the opponent's hidden cards, so the tracker only knows wh
 3. `deck.txt` is only needed to force a different list: if it has cards, it's used instead.
 - **Opponent**: their name, deck classes, cards in hand, and every card they've played.
 - **✦ Generated** (teal, opponent only; your own generated cards are hidden to keep the panel short):
-  cards made during the match by another card. The game hides that mark on the opponent's cards,
-  so the tracker works it out:
-  - a card from outside their 2 classes is **generated** (bright ✦)
-  - cards that land in their hand without coming from their deck are counted: **✦2** next to
-    "in hand" = they hold 2 generated cards
-  - when they play a card one of those could be (e.g. a Flop card after Salvaged Goods), it's
-    **maybe generated** (faded ✦). The generators and what they give are in `GENERATORS` in `cards.py`
-  - **backcheck**: a deck holds at most 1 copy of a Rare and 2 of a Common. A 2nd Rare or 3rd Common
-    is generated, and an earlier "maybe" copy is upgraded to generated
+  cards made during the match by another card. The game shows these with a **lighter border**,
+  and sends that mark to both players, so the tracker reads it for the opponent's cards too.
+  **✦2** next to "in hand" = they hold 2 generated cards. Safety net: a deck holds at most
+  1 copy of a Rare and 2 of a Common, so a 2nd Rare or 3rd Common is always generated.
 4. Play a match. The terminal prints the log as it happens, for example:
    ```
    [Hand 6 Flop] azhh: Check

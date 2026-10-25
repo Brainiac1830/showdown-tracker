@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from collections import Counter
 
-from cards import GENERATORS, card_info, could_make, max_copies
+from cards import GENERATORS, card_info, max_copies
 
 
 def server_time_ms(text):
@@ -84,8 +84,8 @@ class Game:
         # Cards played that were made during the match by another card
         # (e.g. Salvaged Goods gives Flop cards). They're not part of the deck.
         self.generated = {"P1": Counter(), "P2": Counter()}
-        # Opponent plays that may have been generated (the game hides the mark on their cards)
-        self.maybe_generated = {"P1": Counter(), "P2": Counter()}
+        # Card ids the game showed with the lighter "generated" border (AnimateCard "generatedCard")
+        self.marked_generated = set()
         self.opp_pool = []                # generated cards the opponent holds: [[generator ids], ...]
         self.opp_generators_played = set()
         # Every play in order: [{"hand": 6, "stage": "Flop", "player": "P1", "card": "...", ...}]
@@ -231,6 +231,12 @@ class Game:
                 info = data.get("Info") or {}
                 self._cards_moved(info.get("CardIds") or [], info.get("LocId") or "", info.get("Settings"))
 
+            elif kind == "AnimateCard":
+                # The lighter border on generated cards: sent to BOTH players when the
+                # card is shown, e.g. {"CardId": "...", "Info": {"animationId": "generatedCard"}}
+                if (data.get("Info") or {}).get("animationId") == "generatedCard":
+                    self.marked_generated.add(data.get("CardId"))
+
             elif kind == "DestroyCard":
                 # The game sometimes replaces a card with a new id: the old id is gone
                 cid = (data.get("Req") or {}).get("CardId")
@@ -357,35 +363,13 @@ class Game:
         while len(self.opp_pool) > hand_now:
             self.opp_pool.pop(0)
 
-    def _opp_play_generated(self, info, opp, off_class):
-        """The opponent played this card. Returns "yes", "maybe" or "no"
-        and takes the matching card out of the generated pool."""
-        fits = [i for i, source in enumerate(self.opp_pool)
-                if any(could_make(s, info) for s in source)]
-        if off_class:
-            if self.opp_pool:
-                self.opp_pool.pop(fits[0] if fits else 0)
-            return "yes"
-        if not fits:
-            return "no"
-        # If every card they held was generated, this one was too
-        held = self.cards_in_hand(opp) + 1     # the played card has already left the hand
-        self.opp_pool.pop(fits[0])
-        return "yes" if len(self.opp_pool) + 1 >= held else "maybe"
-
     def _backcheck_copies(self, pid, card_id):
         """A deck holds at most 1 copy of a Rare and 2 of a Common. If the player
-        has played more than that, the extra copies were generated.
-        "maybe" plays are upgraded first, then deck plays."""
+        has played more than that, the extra copies were generated."""
         info = card_info(card_id)
-        extra = self.played[pid][card_id] + self.maybe_generated[pid][card_id] - max_copies(info)
+        extra = self.played[pid][card_id] - max_copies(info)
         while extra > 0:
-            if self.maybe_generated[pid][card_id]:
-                self.maybe_generated[pid][card_id] -= 1
-            elif self.played[pid][card_id]:
-                self.played[pid][card_id] -= 1
-            else:
-                break
+            self.played[pid][card_id] -= 1
             self.generated[pid][card_id] += 1
             extra -= 1
             # fix the most recent matching play in the list
@@ -395,9 +379,8 @@ class Game:
                     break
             self.say(f"Backcheck: {self.name(pid)} played more {info['name']} than a deck can hold "
                      f"({max_copies(info)}), so one was generated")
-        for counter in (self.played[pid], self.maybe_generated[pid]):
-            if counter[card_id] <= 0:
-                counter.pop(card_id, None)
+        if self.played[pid][card_id] <= 0:
+            self.played[pid].pop(card_id, None)
 
     def deck_out(self, pid):
         """Counter {card_id: n} of my deck cards that are no longer in my deck
@@ -485,14 +468,14 @@ class Game:
                 owner = pid if pid in ("P1", "P2") else card.get("OwnerId")
                 made, why = self._is_generated(card, info, owner)
                 if owner in self.played:
-                    bucket = {"yes": self.generated, "maybe": self.maybe_generated}.get(made, self.played)
-                    bucket[owner][info["id"]] += 1
+                    (self.generated if made else self.played)[owner][info["id"]] += 1
+                if made and owner == self.opponent() and self.opp_pool:
+                    self.opp_pool.pop(0)   # one less generated card in their hand
                 if owner == self.me and len(self.saved_decks) > 1:
                     self.pick_deck()   # a played card can settle a tie between decks
                 self.plays.append({"hand": hand, "stage": stage, "player": owner, "card": info["name"],
-                                   "cardId": info["id"],
-                                   "generated": {"yes": True, "maybe": "maybe"}.get(made, False)})
-                extra = {"yes": f"  (generated: {why})", "maybe": f"  (maybe generated: {why})"}.get(made, "")
+                                   "cardId": info["id"], "generated": made})
+                extra = f"  (generated: {why})" if made else ""
                 self.say(f"{where} {self.name(owner)} played {info['name']}{extra}")
                 if owner in self.played:
                     self._backcheck_copies(owner, info["id"])
@@ -513,26 +496,19 @@ class Game:
 
     def _is_generated(self, card, info, owner):
         """Was this card made during the match (not from the deck)?
-        Returns ("yes" / "maybe" / "no", reason).
+        Returns (True/False, reason).
 
-        1. The game marks such cards with a "Generated" slot. The owner always
-           sees it (seen on 2026-10-24: Salvaged Goods -> Stroke of Luck,
-           Prototype -> Prototype). We may not see it on the opponent's cards.
-        2. Backup: every deck has 2 classes. A card from another class can't be
-           from the deck (e.g. a Gambler card for a Rebel / Inventor deck).
+        1. The lighter border: the game sends AnimateCard "generatedCard" for the
+           card's id, to both players (found by Olivier on 2026-10-25). Checked on
+           10 matches: it was right for every card, for both players.
+        2. My own cards also carry a "Generated" slot that only I can see.
+        (The copy-limit backcheck in _backcheck_copies is a last safety net.)
         """
+        if card.get("LiveViewId") in self.marked_generated or card.get("ViewId") in self.marked_generated:
+            return True, "lighter border"
         if any((slot or {}).get("Type") == "Generated" for slot in card.get("Slots") or []):
-            return "yes", "marked by the game"
-        classes = self.deck_classes.get(owner) or []
-        off_class = bool(classes and info.get("class") and info["class"] not in classes)
-        why = f"{info['class']} card, deck is {' / '.join(classes)}" if off_class else ""
-        # 3. Opponent only: did they hold a generated card this could be?
-        if owner == self.opponent():
-            made = self._opp_play_generated(info, owner, off_class)
-            if made != "no" and not why:
-                why = "they held a generated card it could be"
-            return made, why
-        return ("yes" if off_class else "no"), why
+            return True, "marked by the game"
+        return False, ""
 
     # ---------- end of match ----------
 
@@ -586,7 +562,6 @@ class Game:
             "myGeneratedPlayed": by_name(self.generated[self.me]) if self.me else {},
             "opponentCardsPlayed": by_name(self.played[opp]) if opp else {},
             "opponentGeneratedPlayed": by_name(self.generated[opp]) if opp else {},
-            "opponentMaybeGenerated": by_name(self.maybe_generated[opp]) if opp else {},
             "plays": [dict(p, playerName=self.name(p["player"])) for p in self.plays],
         }
 
@@ -615,5 +590,4 @@ class Game:
             "myGenerated": dict(self.generated[me]),
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
-            "opponentMaybe": dict(self.maybe_generated[opp]),
         }
