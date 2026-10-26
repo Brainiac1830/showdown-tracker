@@ -397,9 +397,9 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
     # ----- this match -----
     known = {}
     if not tournament:
-        # ----- this match: what they played (count = times), plus the cards stolen
-        # from them (e.g. by my Thought Police): those are in their deck too -----
-        y = played_sections(img, d, y, game.played[pid] + game.stolen[pid])
+        # ----- this match: every deck card seen from them (count = copies): played,
+        # discarded (e.g. by my Drought) or stolen (e.g. by my Thought Police) -----
+        y = played_sections(img, d, y, game.seen(pid))
     else:
         # ----- tournament: ONE list. Decks are locked, so every card played this match
         # is in their deck too: known deck + new cards from this match.
@@ -439,7 +439,7 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
         d.text((WIDTH - 6 - d.textlength("hide", font=SMALL), top + 5), "hide", font=SMALL, fill=DIM)
         # Leave out cards they already played this match as often as ever before,
         # and cards already in the TOURNAMENT DECK above (those are certain)
-        played_now = game.played[pid] + game.stolen[pid]
+        played_now = game.seen(pid)
         rows = [c for c in prediction["cards"] if played_now[c["id"]] < c["most"] and c["id"] not in known]
         shown = rows[:MAX_PREDICTED]
         groups = {}

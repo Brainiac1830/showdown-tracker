@@ -58,7 +58,8 @@ SYNC_EVERY = 120
 #   2 = hand log + deck list (Cards page), discarded cards, classes worked out from cards
 #   3 = ranks + bot flag, hands ended by a card (Windfall), chips per hand measured after each hand
 #   4 = stolen cards (Thought Police...) count in the victim's deck, not as the thief's plays
-DATA_VERSION = 4
+#   5 = cards discarded straight from the deck (Drought) count as seen
+DATA_VERSION = 5
 DATA_STATE_FILE = SAVE_FOLDER / "data_version.json"
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)

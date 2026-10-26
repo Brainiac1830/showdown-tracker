@@ -513,8 +513,10 @@ class Game:
                 self._batch_left += 1
             if opp and before == f"{opp}_ActionsDeck" and loc == f"{opp}_Hand":
                 self._batch_drawn += 1
-            # hand -> discard pile = discarded (played cards go hand -> cast first)
-            if before.endswith("_Hand") and loc.endswith("_Discard") and not self._reading_snapshot:
+            # hand or deck -> discard pile = discarded (played cards go hand -> cast first).
+            # From the deck: e.g. Drought ("Discard all River cards from both players' decks"),
+            # the game shows those cards to both players.
+            if before.endswith(("_Hand", "_ActionsDeck")) and loc.endswith("_Discard")                     and not self._reading_snapshot:
                 self._pending_discards.append((before.split("_")[0], cid))
             owner = self.original.get(cid)
             if owner is None or owner != self.me or self._reading_snapshot:
