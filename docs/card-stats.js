@@ -10,7 +10,9 @@
 //
 // It's what happened when a card was played, not proof the card caused it: you may play
 // some cards when you're already ahead. "vs avg" compares to the overall win rate.
-// Generated cards are left out (not part of a deck).
+// Generated cards (made during the match) are left out unless "+ Generated" is on:
+// some only come after winning (Prototype, Card Protector), which would flatter them.
+// With it on, the ✦ number says how many of a card's hands/games were generated copies.
 // Uses each match's handLog (saved by the tracker since 2026-10-25; older matches get it
 // with  python website.py --upload-all --replace).
 // ============================================================
@@ -30,6 +32,7 @@ const table      = document.getElementById("card-table");
 let matches = [];
 let mode = "hand";           // "hand" or "game"
 let scope = "me";            // "me" or "all"
+let withGenerated = false;   // count generated copies too
 let versions = {};           // match id -> "Theory Craft v2"
 
 
@@ -93,16 +96,19 @@ function playersOf(match) {
       P1: winner && !match.leftEarly ? names[0] === winner : null,
       P2: winner && !match.leftEarly ? names[1] === winner : null,
       cards: { P1: (match.players[0] || {}).cards || {}, P2: (match.players[1] || {}).cards || {} },
+      generated: { P1: (match.players[0] || {}).generated || {}, P2: (match.players[1] || {}).generated || {} },
     };
   }
   const me = match.me || "P1";
   const opp = me === "P1" ? "P2" : "P1";
   const result = match.result === "win" ? true : match.result === "loss" ? false : null;
-  const out = { cards: {} };
+  const out = { cards: {}, generated: {} };
   out[me] = result;
   out[opp] = result === null ? null : !result;
   out.cards[me] = match.myCards || {};
   out.cards[opp] = match.opponentCards || {};
+  out.generated[me] = match.myGenerated || {};
+  out.generated[opp] = match.opponentGenerated || {};
   return out;
 }
 
@@ -128,6 +134,7 @@ function samples() {
           const other = pid === "P1" ? "P2" : "P1";
           list.push({
             cards: (h.cards || {})[pid] || {},
+            generated: (h.generated || {})[pid] || {},
             won: h.winner === pid,
             swing: h.chips ? (h.chips[pid] || 0) - (h.chips[other] || 0) : null,
           });
@@ -139,7 +146,7 @@ function samples() {
         if (info[pid] === null || info[pid] === undefined) {
           continue;           // no result (left early): can't count for "per game"
         }
-        list.push({ cards: info.cards[pid] || {}, won: info[pid], swing: null });
+        list.push({ cards: info.cards[pid] || {}, generated: info.generated[pid] || {}, won: info[pid], swing: null });
       }
     }
   }
@@ -159,7 +166,9 @@ function render() {
     ? `Average: ${who} won <b>${Math.round(base)}%</b> of ${all.length} ${unit}s`
     : "";
   explainBox.textContent = all.length
-    ? `Win rate when the card was played at least once in the ${unit}. Rows with fewer than ${MIN_SAMPLES} ${unit}s are greyed out: too little data to trust.` +
+    ? `Win rate when the card was played at least once in the ${unit}` +
+      (withGenerated ? " (generated copies included: ✦ = how many of those had one)" : " (deck cards only, generated copies left out)") +
+      `. Rows with fewer than ${MIN_SAMPLES} ${unit}s are greyed out: too little data to trust.` +
       (mode === "hand" ? " Chips = average chip swing in those hands (their chips minus the opponent's)." : "")
     : "";
 
@@ -172,9 +181,14 @@ function render() {
   // Add up per card
   const stats = {};
   for (const s of all) {
-    for (const id of Object.keys(s.cards)) {
-      const st = stats[id] = stats[id] || { n: 0, wins: 0, swing: 0, swingN: 0 };
+    const fromDeck = Object.keys(s.cards);
+    const made = withGenerated ? Object.keys(s.generated || {}) : [];
+    for (const id of new Set(fromDeck.concat(made))) {
+      const st = stats[id] = stats[id] || { n: 0, gen: 0, wins: 0, swing: 0, swingN: 0 };
       st.n += 1;
+      if (made.includes(id)) {
+        st.gen += 1;
+      }
       st.wins += s.won ? 1 : 0;
       if (s.swing !== null) {
         st.swing += s.swing;
@@ -184,7 +198,7 @@ function render() {
   }
   const rows = Object.entries(stats).map(function ([id, st]) {
     const rate = (100 * st.wins) / st.n;
-    return { card: findCard(id), n: st.n, wins: st.wins, rate: rate, diff: rate - base,
+    return { card: findCard(id), n: st.n, gen: st.gen, wins: st.wins, rate: rate, diff: rate - base,
              swing: st.swingN ? st.swing / st.swingN : null };
   }).sort(function (a, b) {
     if (sortBy.value === "rate") return b.rate - a.rate || b.n - a.n;
@@ -203,7 +217,7 @@ function render() {
       const swing = r.swing === null ? "" : (r.swing > 0 ? "+" : "") + r.swing.toFixed(1);
       return `<tr class="${low ? "low-data" : ""}" title="${low ? "Low data: " : ""}${r.wins} won of ${r.n}">
         <td class="card-cell">${cardBar(r.card, r.n, "")}</td>
-        <td class="num">${r.n}</td>
+        <td class="num">${r.n}${r.gen ? ` <span class="spark" title="${r.gen} with a generated copy">✦${r.gen}</span>` : ""}</td>
         <td class="num">${r.wins}</td>
         <td class="num"><span class="rate">${Math.round(r.rate)}%
           <span class="rate-bar"><span class="rate-fill" style="display:block; width: ${r.rate}%"></span></span></span></td>
@@ -227,6 +241,7 @@ function setupToggle(id, onChange) {
   });
 }
 setupToggle("mode-toggle", function (value) { mode = value; });
+setupToggle("gen-toggle", function (value) { withGenerated = value === "on"; });
 setupToggle("scope-toggle", function (value) {
   scope = value;
   deckFilter.disabled = value === "all";      // decks are only mine

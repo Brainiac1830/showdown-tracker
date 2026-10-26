@@ -38,6 +38,12 @@
         <button type="button" data-value="me" class="on">My plays</button>
         <button type="button" data-value="all">Everyone</button>
       </div>
+      <!-- Generated cards (made during the match, e.g. by Salvaged Goods) are left out by default:
+           some only come after winning (Prototype, Card Protector), which makes them look better -->
+      <div class="toggle" id="gen-toggle" title="Cards made during the match (✦)">
+        <button type="button" data-value="off" class="on">Deck cards</button>
+        <button type="button" data-value="on">+ Generated ✦</button>
+      </div>
       <select id="deck-filter" title="My deck (and its versions)"></select>
       <select id="sort-by" title="Sort">
         <option value="played">Most played</option>
