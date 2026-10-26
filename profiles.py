@@ -33,10 +33,14 @@ def appearances(record):
                     "cards": record.get("opponentCards") or {}}]
     for p in players:
         # no name yet (left before the game showed it) = can't be used for anyone's profile
-        if p.get("name") and p.get("name") not in ("?", "P1", "P2"):
-            yield {"name": p["name"], "classes": p.get("classes") or [], "cards": p.get("cards") or {},
-                   "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
-                   "tournament": record.get("tournament") or ""}
+        if not p.get("name") or p.get("name") in ("?", "P1", "P2"):
+            continue
+        # unknown classes and almost nothing seen (left right away): not worth keeping
+        if not p.get("classes") and sum((p.get("cards") or {}).values()) < 2:
+            continue
+        yield {"name": p["name"], "classes": p.get("classes") or [], "cards": p.get("cards") or {},
+               "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
+               "tournament": record.get("tournament") or ""}
 
 
 def all_appearances(records, sightings=()):
@@ -48,7 +52,8 @@ def all_appearances(records, sightings=()):
             found[(a["gameId"], a["name"].lower())] = a
     for s in sightings or ():
         key = (s.get("gameId"), (s.get("name") or "").lower())
-        if s.get("name") and key not in found:
+        too_little = not s.get("classes") and sum((s.get("cards") or {}).values()) < 2
+        if s.get("name") and key not in found and not too_little:
             found[key] = {"name": s["name"], "classes": s.get("classes") or [], "cards": s.get("cards") or {},
                           "playedAt": s.get("playedAt") or 0, "gameId": s.get("gameId"),
                           "tournament": s.get("tournament") or ""}

@@ -40,7 +40,9 @@ function buildTournaments(matches, sightings) {
   }
   for (const s of sightings) {
     const id = s.gameId + "|" + (s.name || "").toLowerCase();
-    if (s.name && tournamentKey(s.tournament) && !all[id]) {
+    const cardsSeen = Object.values(s.cards || {}).reduce(function (sum, n) { return sum + n; }, 0);
+    const tooLittle = !(s.classes || []).length && cardsSeen < 2;     // unknown classes, almost nothing seen
+    if (s.name && tournamentKey(s.tournament) && !all[id] && !tooLittle) {
       all[id] = { name: s.name, classes: s.classes || [], cards: s.cards || {}, playedAt: s.playedAt || 0,
                   tournament: s.tournament, mine: false };
     }

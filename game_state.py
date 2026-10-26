@@ -373,8 +373,22 @@ class Game:
         if self.starting_hand and not self.starting_hand_done:
             self.starting_hand_done = True
             self.say(f"Starting hand: {', '.join(self.starting_hand)}")
+        self.infer_classes()
         self.pick_deck()
         self.version += 1
+
+    def infer_classes(self):
+        """The classes are only sent at the start of a match (snapshot). If we missed it
+        (the tracker started after the match was already open), work them out from the
+        cards played: every deck has exactly 2 classes, and generated cards are already
+        left out of "played", so 2 classes seen = the deck's 2 classes."""
+        for pid in ("P1", "P2"):
+            if self.deck_classes.get(pid):
+                continue
+            seen = sorted({card_info(c).get("class") for c in self.played[pid]} - {None})
+            if len(seen) == 2:
+                self.deck_classes[pid] = seen
+                self.say(f"{self.name(pid)}'s classes worked out from the cards played: {' / '.join(seen)}")
 
     def _cards_moved(self, ids, loc, settings):
         """Cards changed place. Log my draws and cards put back in my deck."""

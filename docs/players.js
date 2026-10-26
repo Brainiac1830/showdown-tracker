@@ -32,7 +32,9 @@ function buildPlayers(matches, sightings) {
   }
   for (const s of sightings) {
     const id = s.gameId + "|" + (s.name || "").toLowerCase();
-    if (s.name && !all[id]) {
+    const cardsSeen = Object.values(s.cards || {}).reduce(function (sum, n) { return sum + n; }, 0);
+    const tooLittle = !(s.classes || []).length && cardsSeen < 2;     // unknown classes, almost nothing seen
+    if (s.name && !all[id] && !tooLittle) {
       // shared by someone else: no result, not "mine"
       all[id] = { name: s.name, classes: s.classes || [], cards: s.cards || {}, generated: {},
                   shared: true, match: { gameId: s.gameId, playedAt: s.playedAt || 0, spectated: true } };

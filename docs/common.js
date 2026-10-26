@@ -57,7 +57,11 @@ function appearances(match) {
     ? (match.players || [])
     : [{ name: match.opponent, classes: match.opponentClasses, cards: match.opponentCards, generated: match.opponentGenerated }];
   return players
-    .filter(function (p) { return p.name && p.name !== "?"; })
+    // no name yet, or unknown classes with almost nothing seen (left right away): not worth showing
+    .filter(function (p) {
+      const cardsSeen = Object.values(p.cards || {}).reduce(function (sum, n) { return sum + n; }, 0);
+      return p.name && !["?", "P1", "P2"].includes(p.name) && ((p.classes || []).length > 0 || cardsSeen >= 2);
+    })
     .map(function (p) {
       return { name: p.name, classes: p.classes || [], cards: p.cards || {}, generated: p.generated || {}, match: match };
     });
