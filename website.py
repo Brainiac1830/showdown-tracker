@@ -320,18 +320,23 @@ def count_saved():
 
 # ---------- 4. UPLOADING OLD MATCHES ----------
 
-def upload_all(replace=False):
+def upload_all(replace=False, only=None, quiet=False):
     """Replays every match folder in games\\ and saves the finished ones
-    (replace=True: also re-save the ones already online)."""
+    (replace=True: also re-save the ones already online).
+    only = a set of folder names to do (None = all); quiet = one summary line instead of one per match.
+    Returns how many matches were saved."""
     from tracker import SAVE_FOLDER, replay_game, save_record   # here, not at the top: tracker.py imports this file
     from profiles import appearances
     folders = sorted(p for p in SAVE_FOLDER.glob("*/raw.jsonl")
-                     if not p.parent.name.startswith(("replay_", "test_")))
+                     if not p.parent.name.startswith(("replay_", "test_"))
+                     and (only is None or p.parent.name in only))
+    say = (lambda text: None) if quiet else print
+    done = 0
     for raw in folders:
         game = replay_game(raw)
         name = raw.parent.name
         if game is None or not (game.ended or game.anything_seen()):
-            print(f"  {name}: nothing seen, skipped")
+            say(f"  {name}: nothing seen, skipped")
             continue
         try:
             record = game.website_record()
@@ -344,9 +349,11 @@ def upload_all(replace=False):
                 what = "left early, not saved (no result)"   # my own match: only the opponent is shared
             if not game.ended and game.spectating:
                 what += " (left early)"
-            print(f"  {name}: {what} ({game.result_word()}: {players}) - {share_sightings(record, replace)}")
+            say(f"  {name}: {what} ({game.result_word()}: {players}) - {share_sightings(record, replace)}")
+            done += 1
         except RuntimeError as error:
             print(f"  {name}: not saved - {error}")
+    return done
 
 
 if __name__ == "__main__":
@@ -357,6 +364,9 @@ if __name__ == "__main__":
         if "--upload-all" in sys.argv:
             print("Uploading finished matches from games\\ ...")
             upload_all(replace="--replace" in sys.argv)
+            if "--replace" in sys.argv:
+                from tracker import save_data_state
+                save_data_state(online=True)     # everything is saved the current way now
         print(f"Linked ✓  ({read_key().get('email', '?')}) - {count_saved()} Showdown matches online")
         shared = sync_sightings(HERE / "games" / "shared_sightings.json")
         print(f"Shared player data: {len(shared)} sightings of {len({s.get('nameKey') for s in shared})} players")

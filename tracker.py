@@ -51,6 +51,13 @@ SHARED_FILE = SAVE_FOLDER / "shared_sightings.json"
 TOURNAMENT_FILE = HERE / "tournament_mode.json"
 # How often to download what other players shared (seconds)
 SYNC_EVERY = 120
+# The way matches are read and saved. RAISE THIS NUMBER when that changes (e.g. a new
+# kind of data in the records): every PC then re-saves its old matches once, by itself,
+# from their raw.jsonl, the next time the tracker starts. History:
+#   1 = before 2026-10-25 evening
+#   2 = hand log + deck list (Cards page), discarded cards, classes worked out from cards
+DATA_VERSION = 2
+DATA_STATE_FILE = SAVE_FOLDER / "data_version.json"
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)
 SAVE_ONLINE = True
@@ -91,6 +98,7 @@ class Recorder:
             self.records = profiles.load_records(SAVE_FOLDER)
             if self.save_online:
                 self.sync_shared()
+            self.resave_if_outdated()
 
     def predict(self, name, classes, game_id):
         """What this player played in earlier matches with these classes (see profiles.py)."""
@@ -128,6 +136,41 @@ class Recorder:
             return None
         return profiles.tournament_deck(self.records, name, tournament, exclude_game=game_id,
                                         sightings=self.shared)
+
+    def resave_if_outdated(self):
+        """Matches saved by an older tracker (see DATA_VERSION): re-save them once, in the
+        background, from their raw.jsonl. Online too if linked (your matches + what you shared).
+        Only the matches that exist NOW: the one you're about to play isn't touched."""
+        state = load_data_state()
+        outdated = state.get("version", 1) < DATA_VERSION
+        not_online = self.save_online and not state.get("online")
+        existing = {raw.parent.name for raw in SAVE_FOLDER.glob("*/raw.jsonl")
+                    if not raw.parent.name.startswith(("replay_", "test_"))}
+        if not existing or not (outdated or not_online):
+            if not existing:
+                save_data_state(online=self.save_online)     # nothing to re-save
+            return
+        print(f"Updating your {len(existing)} saved matches to the newest format (in the background)...")
+
+        def work():
+            try:
+                if self.save_online:
+                    done = website.upload_all(replace=True, only=existing, quiet=True)
+                    print(f"  ... done: {done} matches re-saved and shared again.")
+                else:
+                    for raw in SAVE_FOLDER.glob("*/raw.jsonl"):
+                        if raw.parent.name in existing:
+                            game = replay_game(raw)
+                            if game is not None and (game.ended or game.anything_seen()):
+                                save_record(raw.parent, game.website_record())
+                    print("  ... done (on this PC only: no tracker_key.txt).")
+                save_data_state(online=self.save_online)
+                self.records = profiles.load_records(SAVE_FOLDER)     # predictions use the new data
+                if self.game is not None:
+                    self.game.version += 1
+            except Exception as error:
+                print(f"  ... couldn't update the old matches ({error}). It will try again next time.")
+        threading.Thread(target=work, daemon=True).start()
 
     def sync_shared(self):
         """Download new shared sightings, in the background (one download at a time).
@@ -275,6 +318,19 @@ class Recorder:
             work()
         else:
             threading.Thread(target=work, daemon=True).start()
+
+
+def load_data_state():
+    """{"version": 2, "online": true}: how the saved matches on this PC were last saved."""
+    try:
+        return json.loads(DATA_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_data_state(online):
+    SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
+    DATA_STATE_FILE.write_text(json.dumps({"version": DATA_VERSION, "online": bool(online)}), encoding="utf-8")
 
 
 def load_tournament_mode():

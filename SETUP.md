@@ -70,6 +70,10 @@ The two overlay windows appear at the edges of the screen. Drag them where you l
 replaces the tracker files and shows what changed. Your key, your matches (`games` folder), your login
 and your settings are kept.
 
+If the new version reads matches better, the next time you start the tracker it says
+*"Updating your N saved matches to the newest format (in the background)"*: your old matches are
+re-saved (and shared again) the new way, once. You can play meanwhile.
+
 (By hand: download the ZIP again as in step 2 and extract it into the same folder, choosing
 **Replace the files**.)
 
