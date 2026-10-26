@@ -376,7 +376,7 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
         # is in their deck too: known deck + new cards from this match.
         # count = copies they still have this match (0 = grey)
         earlier = tdeck["cards"] if tdeck else {}
-        played_now = game.played[pid]
+        played_now = game.seen(pid)          # played + discarded this match: both used up a copy
         known = {c: max(earlier.get(c, 0), played_now[c]) for c in set(earlier) | set(played_now)}
         n = tdeck["matches"] if tdeck else 0
         info = f"{sum(known.values())}/30 · " + (f"{n} earlier match{'es' if n != 1 else ''}" if n else "first time seen")

@@ -55,7 +55,8 @@ function classKey(classes) {
 function appearances(match) {
   const players = match.spectated
     ? (match.players || [])
-    : [{ name: match.opponent, classes: match.opponentClasses, cards: match.opponentCards, generated: match.opponentGenerated }];
+    : [{ name: match.opponent, classes: match.opponentClasses, cards: match.opponentCards,
+         generated: match.opponentGenerated, discarded: match.opponentDiscarded }];
   return players
     // no name yet, or unknown classes with almost nothing seen (left right away): not worth showing
     .filter(function (p) {
@@ -63,7 +64,12 @@ function appearances(match) {
       return p.name && !["?", "P1", "P2"].includes(p.name) && ((p.classes || []).length > 0 || cardsSeen >= 2);
     })
     .map(function (p) {
-      return { name: p.name, classes: p.classes || [], cards: p.cards || {}, generated: p.generated || {}, match: match };
+      // cards = every deck card SEEN from them: played + discarded (both are in their deck)
+      const seen = Object.assign({}, p.cards || {});
+      for (const [id, n] of Object.entries(p.discarded || {})) {
+        seen[id] = (seen[id] || 0) + n;
+      }
+      return { name: p.name, classes: p.classes || [], cards: seen, generated: p.generated || {}, match: match };
     });
 }
 

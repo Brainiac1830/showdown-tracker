@@ -91,6 +91,10 @@ class Game:
         # Cards played that were made during the match by another card
         # (e.g. Salvaged Goods gives Flop cards). They're not part of the deck.
         self.generated = {"P1": Counter(), "P2": Counter()}
+        # Deck cards discarded straight from the hand (e.g. Salvaged Goods, Mulligan). The game
+        # shows them to both players. Not "played" (no win rate), but they ARE in that deck.
+        self.discarded = {"P1": Counter(), "P2": Counter()}
+        self._pending_discards = []       # (player, card id) waiting for the batch to finish
         # Card ids the game showed with the lighter "generated" border (AnimateCard "generatedCard")
         self.marked_generated = set()
         self.opp_pool = []                # generated cards the opponent holds: [[generator ids], ...]
@@ -373,9 +377,27 @@ class Game:
         if self.starting_hand and not self.starting_hand_done:
             self.starting_hand_done = True
             self.say(f"Starting hand: {', '.join(self.starting_hand)}")
+        self._resolve_discards()
         self.infer_classes()
         self.pick_deck()
         self.version += 1
+
+    def _resolve_discards(self):
+        """At the end of each update (the card's name and its generated mark can come
+        before or after the move): count discarded deck cards, skip generated ones."""
+        for pid, cid in self._pending_discards:
+            card_id = self.card_def.get(cid)
+            if not card_id or pid not in self.discarded:
+                continue
+            if cid in self.marked_generated:
+                continue               # lighter border: made during the match, not a deck card
+            self.discarded[pid][card_id] += 1
+            self.say(f"[{self.hand_number}] {self.name(pid)} discarded {card_info(card_id)['name']}")
+        self._pending_discards = []
+
+    def seen(self, pid):
+        """Deck cards seen from this player this match: played + discarded."""
+        return self.played[pid] + self.discarded[pid]
 
     def infer_classes(self):
         """The classes are only sent at the start of a match (snapshot). If we missed it
@@ -385,7 +407,7 @@ class Game:
         for pid in ("P1", "P2"):
             if self.deck_classes.get(pid):
                 continue
-            seen = sorted({card_info(c).get("class") for c in self.played[pid]} - {None})
+            seen = sorted({card_info(c).get("class") for c in self.seen(pid)} - {None})
             if len(seen) == 2:
                 self.deck_classes[pid] = seen
                 self.say(f"{self.name(pid)}'s classes worked out from the cards played: {' / '.join(seen)}")
@@ -400,6 +422,9 @@ class Game:
                 self._batch_left += 1
             if opp and before == f"{opp}_ActionsDeck" and loc == f"{opp}_Hand":
                 self._batch_drawn += 1
+            # hand -> discard pile = discarded (played cards go hand -> cast first)
+            if before.endswith("_Hand") and loc.endswith("_Discard") and not self._reading_snapshot:
+                self._pending_discards.append((before.split("_")[0], cid))
             owner = self.original.get(cid)
             if owner is None or owner != self.me or self._reading_snapshot:
                 continue
@@ -672,6 +697,7 @@ class Game:
             "myGenerated": dict(self.generated[me]),
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
+            "opponentDiscarded": dict(self.discarded[opp]),     # deck cards they discarded (not played)
             "tournament": self.tournament or "",
             "leftEarly": not self.ended,                # left before the end: no result
             "me": me or "",                             # which player I was (for handLog)
@@ -710,7 +736,7 @@ class Game:
         def player(pid):
             return {"name": self.names.get(pid) or "", "classes": self.deck_classes.get(pid, []),
                     "chips": self.chips.get(pid, 0), "cards": dict(self.played[pid]),
-                    "generated": dict(self.generated[pid])}
+                    "generated": dict(self.generated[pid]), "discarded": dict(self.discarded[pid])}
         # EndHand results are stored as "my" = P1 and "opponent" = P2 when nobody is "me"
         return {
             "gameId": self.game_id,

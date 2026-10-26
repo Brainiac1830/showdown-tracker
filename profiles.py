@@ -16,6 +16,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from cards import card_info, max_copies
+
 
 def class_key(classes):
     """["Rebel", "Protector"] -> "Protector / Rebel" (sorted, so the order doesn't matter)"""
@@ -30,7 +32,8 @@ def appearances(record):
         players = record.get("players") or []
     else:
         players = [{"name": record.get("opponent"), "classes": record.get("opponentClasses"),
-                    "cards": record.get("opponentCards") or {}}]
+                    "cards": record.get("opponentCards") or {},
+                    "discarded": record.get("opponentDiscarded") or {}}]
     for p in players:
         # no name yet (left before the game showed it) = can't be used for anyone's profile
         if not p.get("name") or p.get("name") in ("?", "P1", "P2"):
@@ -38,7 +41,9 @@ def appearances(record):
         # unknown classes and almost nothing seen (left right away): not worth keeping
         if not p.get("classes") and sum((p.get("cards") or {}).values()) < 2:
             continue
-        yield {"name": p["name"], "classes": p.get("classes") or [], "cards": p.get("cards") or {},
+        # every deck card SEEN from them: played + discarded (both are in their deck)
+        seen = Counter(p.get("cards") or {}) + Counter(p.get("discarded") or {})
+        yield {"name": p["name"], "classes": p.get("classes") or [], "cards": dict(seen),
                "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
                "tournament": record.get("tournament") or ""}
 
@@ -119,6 +124,8 @@ def tournament_deck(records, name, tournament, exclude_game=None, sightings=()):
     for a in found:
         for card_id, n in a["cards"].items():
             cards[card_id] = max(cards[card_id], n)
+    for card_id in cards:              # never more copies than a deck can hold (Rare 1, Common 2)
+        cards[card_id] = min(cards[card_id], max_copies(card_info(card_id)))
     newest = max(found, key=lambda a: a["playedAt"])
     return {"matches": len(found), "classes": newest["classes"], "cards": dict(cards),
             "known": sum(cards.values()), "lastSeen": newest["playedAt"]}
