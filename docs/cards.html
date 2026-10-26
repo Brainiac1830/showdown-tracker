@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cards | Showdown Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="page-header">
+    <h1>Showdown <span>Tracker</span></h1>
+  </header>
+
+  <!-- The menu. class="active" highlights the page you're on. -->
+  <nav class="main-nav">
+    <a href="index.html">Home</a>
+    <a href="match-history.html">Match History</a>
+    <a href="cards.html" class="active">Cards</a>
+    <a href="players.html">Players</a>
+    <a href="tournaments.html">Tournaments</a>
+    <a href="tools.html">Tools</a>
+    <!-- Sign in / sign out. Filled in by firebase.js -->
+    <div class="auth-area" id="auth-area"></div>
+  </nav>
+
+  <main>
+    <p class="page-status" id="page-status"></p>
+
+    <!-- ===== Choices ===== -->
+    <div class="history-filters">
+      <div class="toggle" id="mode-toggle">
+        <button type="button" data-value="hand" class="on">Per hand</button>
+        <button type="button" data-value="game">Per game</button>
+      </div>
+      <div class="toggle" id="scope-toggle">
+        <button type="button" data-value="me" class="on">My plays</button>
+        <button type="button" data-value="all">Everyone</button>
+      </div>
+      <select id="deck-filter" title="My deck (and its versions)"></select>
+      <select id="sort-by" title="Sort">
+        <option value="played">Most played</option>
+        <option value="rate">Best win rate</option>
+        <option value="diff">Most above average</option>
+      </select>
+    </div>
+
+    <!-- "Baseline: you won 50% of 48 hands" -->
+    <div class="history-summary" id="baseline"></div>
+    <p class="dim small" id="explain"></p>
+
+    <table class="stats-table card-table" id="card-table"></table>
+  </main>
+
+  <script src="cards.js"></script>
+  <script src="common.js"></script>
+  <script type="module" src="firebase.js"></script>
+  <script type="module" src="card-stats.js"></script>
+</body>
+
+</html>

@@ -444,6 +444,30 @@ code {
   font-family: Consolas, monospace;
 }
 
+/* ---------- Cards page ---------- */
+/* Two-button switches: [Per hand | Per game] */
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.toggle button {
+  background: var(--panel);
+  color: var(--text-dim);
+  border: none;
+  padding: 7px 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.toggle button.on { background: var(--yellow); color: #111; }
+
+.card-table .card-cell { width: 280px; }
+.card-table .card-cell .card-bar { margin: 0; }
+.card-table tr.low-data td { opacity: 0.45; }     /* too few hands to trust */
+
 /* ---------- Small screens (phone) ---------- */
 @media (max-width: 700px) {
   .match-main {

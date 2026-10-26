@@ -122,6 +122,13 @@ saw other players play is **shared** (Players page + overlay "likely cards").
 - **Match History**: every match (search a player, filter by deck / result; "Watched matches" = spectated).
 - **Players**: everyone you played or watched + players others shared. Per class pair: likely cards with %.
 - **Tournaments**: per tournament, each player's known deck (decks are locked in a tournament).
+- **Cards**: win rate when a card was played. Toggles: **Per hand** (won that hand; + average chip swing)
+  or **Per game** (won the match), and **My plays** or **Everyone** (opponents + watched matches too).
+  Deck filter with automatic **versions**: keep the same deck name when you change a card; each different
+  card list becomes v1, v2, v3... Rows with fewer than 20 hands/games are greyed out (not enough data).
+  It shows what happened when a card was played, not proof the card caused it.
+  Matches saved before 2026-10-25 get hand data with `python website.py --upload-all --replace`
+  (their deck list is the current one, so old matches all count as the current version).
 - **Tools**: create your tracker key, and steps for other players to get the tracker.
 
 ### Data (Firebase project "showdown-tracker")

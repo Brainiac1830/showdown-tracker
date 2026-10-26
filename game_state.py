@@ -103,6 +103,8 @@ class Game:
         self.starting_hand = []           # my action cards at the start (from the snapshot)
         self.starting_hand_done = False
         self.hand_results = []            # one entry per poker hand (from "EndHand")
+        self.chips_now = {}               # {"P1": 48, "P2": 0}: chips after the last hand (AnimatePlayer setChips)
+        self._log_hand = None             # hand number of the newest game log entry (1, 2, ...)
         self._snapshot_read = False
         self.ended = False
         self.end_reason = None            # plain-English reason we think it ended
@@ -313,12 +315,23 @@ class Game:
                     self.set_me(pid, "your starting hand is visible")
                     self.starting_hand.append(req["Name"])
 
+            elif kind == "AnimatePlayer":
+                # {"PlayerId": "P1", "Info": {"animationId": "setChips", "value": 48}} right after each hand
+                info = data.get("Info") or {}
+                if info.get("animationId") == "setChips" and data.get("PlayerId") in ("P1", "P2"):
+                    try:
+                        self.chips_now[data["PlayerId"]] = int(info.get("value"))
+                    except (TypeError, ValueError):
+                        pass
+
             elif kind == "EndHand":
                 info = data.get("Info") or {}
                 winner = info.get("WinnerId")
                 me, opp = self.me or "P1", other_player(self.me or "P1")
                 result = {
                     "hand": self.hand_number,
+                    "handNo": self._log_hand,                 # to match the cards played in this hand
+                    "chipsBefore": dict(self.chips_now),      # chips before this hand's result
                     "winner": winner,
                     "result": info.get("HandResult"),
                     "myHand": info.get(f"{me}CombinationName"),
@@ -481,6 +494,8 @@ class Game:
         kind = item.get("Type")
         pid = item.get("PlayerId")
         hand = item.get("HandNumber")
+        if isinstance(hand, int):
+            self._log_hand = hand
         stage = item.get("StageDisplayName") or item.get("Stage")
 
         # Who am I? My own hand cards have names, the opponent's are blank.
@@ -645,7 +660,36 @@ class Game:
             "opponentGenerated": dict(self.generated[opp]),
             "tournament": self.tournament or "",
             "leftEarly": not self.ended,                # left before the end: no result
+            "me": me or "",                             # which player I was (for handLog)
+            "deckCards": dict(self.deck),               # my exact deck list: the website numbers versions
+            "handLog": self.hand_log(),
         }
+
+    def hand_log(self):
+        """Hand by hand: who won, the cards each player played in it (generated ones
+        apart) and the chips each player won or lost. Used for card win rates.
+          [{"hand": 3, "winner": "P1" / "P2" / "split", "result": "Wins" / "Folds" / "Split",
+            "cards": {"P1": {card id: n}, "P2": {...}}, "generated": {"P1": {...}, "P2": {...}},
+            "chips": {"P1": +20, "P2": -20}}, ...]
+        Only hands with a known result (when joining midway, earlier hands have none)."""
+        log = []
+        for i, h in enumerate(self.hand_results):
+            if not h.get("handNo"):
+                continue
+            cards = {"P1": {}, "P2": {}}
+            made = {"P1": {}, "P2": {}}
+            for play in self.plays:
+                if play["hand"] == h["handNo"] and play["player"] in cards:
+                    bucket = made if play["generated"] is True else cards
+                    bucket[play["player"]][play["cardId"]] = bucket[play["player"]].get(play["cardId"], 0) + 1
+            # chips after this hand = chips before the next one (or the final chips)
+            after = self.hand_results[i + 1].get("chipsBefore") if i + 1 < len(self.hand_results) else self.chips_now
+            before = h.get("chipsBefore") or {}
+            chips = {p: (after or {}).get(p, 0) - before.get(p, 0) for p in ("P1", "P2")} \
+                if before and after else {}
+            log.append({"hand": h["handNo"], "winner": h["winner"] if h["winner"] in ("P1", "P2") else "split",
+                        "result": h.get("result") or "", "cards": cards, "generated": made, "chips": chips})
+        return log
 
     def spectated_record(self):
         """A match I watched: both players, with the cards they played."""
@@ -663,6 +707,7 @@ class Game:
             "players": [player("P1"), player("P2")],
             "tournament": self.tournament or "",
             "leftEarly": not self.ended,                # stopped watching before the end
+            "handLog": self.hand_log(),
             "hands": [{"hand": h["hand"] or "", "winner": self.names.get(h["winner"]) or "split",
                        "p1Hand": h["myHand"] or "", "p2Hand": h["opponentHand"] or ""}
                       for h in self.hand_results],
