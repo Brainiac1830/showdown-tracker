@@ -196,10 +196,12 @@ def save_match(record, replace=False):
 #   {gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by,
 #    tournament (only in tournament mode)}
 # Only opponents (and both players of a spectated match): my own deck is never shared.
-# The rules (firestore.rules) let everyone read and add them; only the one who
-# added a sighting can change it.
+# The rules (firestore.rules) let everyone read and add them. The one who added a
+# sighting can change it; anyone else only with a more complete one (more different
+# cards), e.g. they watched the whole match and the first person left early.
 
 SIGHTINGS = "showdown_sightings"
+SHARED_CACHE = HERE / "games" / "shared_sightings.json"     # local copy (see sync_sightings)
 SHARE_PLAYERS = True          # False = never share what you saw (you still get everyone else's)
 
 
@@ -210,38 +212,61 @@ def sighting_id(game_id, name):
 
 def share_sightings(record, replace=False):
     """Shares the players seen in this match. Returns a short text for the log.
-    A sighting someone else already shared (e.g. you both watched the same match) is skipped."""
+    For each player, compared with the local copy of the shared data:
+      - not shared yet                         -> add it
+      - shared by me                           -> update it if mine has changed (or replace=True)
+      - shared by someone else, I saw MORE     -> replace it with my more complete version
+      - shared by someone else, I saw the same or less -> leave it (already shared)"""
     from profiles import appearances, class_key      # here: profiles is only needed for this
     if not SHARE_PLAYERS:
         return "sharing turned off"
     uid = read_key()["uid"]
-    shared = skipped = 0
+    try:
+        known = json.loads(SHARED_CACHE.read_text(encoding="utf-8")).get("sightings", {})
+    except (OSError, json.JSONDecodeError):
+        known = {}
+    added = improved = skipped = 0
     for a in appearances(record):          # (players without a known name are skipped there)
         name = a["name"][:40]
+        cards = {card: n for card, n in a["cards"].items() if n > 0}
         fields = {
             "gameId": record["gameId"], "name": name, "nameKey": name.lower(),
             "classes": list(a["classes"])[:2], "classKey": class_key(a["classes"]),
-            "cards": {card: n for card, n in a["cards"].items() if n > 0},
-            "playedAt": int(a["playedAt"]), "by": uid,
+            "cards": cards, "playedAt": int(a["playedAt"]), "by": uid,
         }
         if record.get("tournament"):
             fields["tournament"] = record["tournament"][:60]
-        write = {"update": {"name": doc_name(f"{SIGHTINGS}/{sighting_id(record['gameId'], name)}"),
+        doc_id = sighting_id(record["gameId"], name)
+        there = known.get(doc_id)
+        if there is not None:
+            theirs = there.get("cards") or {}
+            if there.get("by") == uid:
+                if theirs == cards and not replace:
+                    skipped += 1
+                    continue
+            elif len(cards) <= len(theirs):
+                skipped += 1           # someone else's is at least as complete
+                continue
+        write = {"update": {"name": doc_name(f"{SIGHTINGS}/{doc_id}"),
                             "fields": {k: to_value(v) for k, v in fields.items()}},
                  "updateTransforms": [{"fieldPath": "savedAt", "setToServerValue": "REQUEST_TIME"}]}
-        if not replace:
-            write["currentDocument"] = {"exists": False}
         try:
             request(f"{documents_url()}:commit", {"writes": [write]}, token=id_token())
-            shared += 1
-        except AlreadySaved:
-            skipped += 1
+            if there is None:
+                added += 1
+            else:
+                improved += 1
         except RuntimeError as error:
             if "403" in str(error) or "PERMISSION_DENIED" in str(error):
-                skipped += 1          # shared by someone else: only they can change it
+                skipped += 1           # someone else's (shared since my last download) is as complete
             else:
                 raise
-    return f"shared {shared} player(s)" + (f", {skipped} already shared" if skipped else "")
+    parts = [f"shared {added} player(s)"]
+    if improved:
+        parts.append(f"{improved} improved")
+    if skipped:
+        parts.append(f"{skipped} already shared")
+    return ", ".join(parts)
 
 
 def sync_sightings(cache_file):

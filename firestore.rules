@@ -7,8 +7,8 @@
 //   - Anyone can sign in with Google.
 //   - Your matches (users/<you>/...) can only be read and changed by you.
 //   - Player sightings (showdown_sightings) are shared: every signed-in player can
-//     read them all and add new ones, but only the one who added a sighting can
-//     change or delete it. A sighting can carry a tournament name: decks are
+//     read them all and add new ones. Only the one who added a sighting can delete it;
+//     others can only replace it with a more complete one. A sighting can carry a tournament name: decks are
 //     locked during a tournament, so those build each player's tournament deck.
 // ============================================================
 
@@ -46,7 +46,14 @@ service cloud.firestore {
     match /showdown_sightings/{sightingId} {
       allow read: if signedIn();
       allow create: if signedIn() && validSighting();
-      allow update: if signedIn() && validSighting() && resource.data.by == request.auth.uid;
+      // Update: the one who shared it can always update it. Anyone else only with a
+      // MORE COMPLETE version (more different cards), e.g. they watched the whole match
+      // and the first person left early. It must stay the same match and the same player.
+      allow update: if signedIn() && validSighting()
+        && request.resource.data.gameId == resource.data.gameId
+        && request.resource.data.nameKey == resource.data.nameKey
+        && (resource.data.by == request.auth.uid
+            || request.resource.data.cards.size() > resource.data.cards.size());
       allow delete: if signedIn() && resource.data.by == request.auth.uid;
     }
   }
