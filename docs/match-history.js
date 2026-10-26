@@ -18,6 +18,7 @@ const summaryBox   = document.getElementById("history-summary");
 const listBox      = document.getElementById("history-list");
 
 let allMatches = [];
+const hideBots = setupHideBots("hide-bots", function () { render(); });
 
 
 // ---------- 2. FILTERS ----------
@@ -41,7 +42,8 @@ function filteredMatches() {
       // "My matches" = everything I played; watched matches only under their own choice
       const resultOk = resultFilter.value === "all" ? !m.spectated : m.result === resultFilter.value;
       const deckOk = m.spectated || deckFilter.value === "all" || (m.deckName || "(unknown deck)") === deckFilter.value;
-      return playerOk && deckOk && resultOk;
+      const botOk = !(hideBots() && isBotMatch(m));
+      return playerOk && deckOk && resultOk && botOk;
     })
     .sort(function (a, b) { return b.playedAt - a.playedAt; });
 }
@@ -96,7 +98,7 @@ function createRow(match) {
     const [p1, p2] = match.players || [{}, {}];
     const nameHtml = function (p) {
       const won = p.name && p.name === match.winner;
-      return `<span class="match-name" style="${won ? "color: var(--win)" : ""}">${escapeHtml(p.name || "?")}${won ? " ★" : ""}</span>`;
+      return `<span class="match-name" style="${won ? "color: var(--win)" : ""}">${escapeHtml(p.name || "?")}${won ? " ★" : ""}</span>${rankBadge(p.rank, p.bot)}`;
     };
     row.innerHTML = `
       <div class="match-main">
@@ -117,7 +119,7 @@ function createRow(match) {
           ${classTags(match.myClasses)}
         </span>
         <span class="match-enemy">
-          <span class="dim small">vs</span> <span class="match-name">${escapeHtml(match.opponent)}</span><br>
+          <span class="dim small">vs</span> <span class="match-name">${escapeHtml(match.opponent)}</span>${rankBadge(match.opponentRank, match.opponentBot)}<br>
           ${classTags(match.opponentClasses)}
         </span>
         <span class="match-score" title="Final chips: you – opponent">${match.myChips ?? "?"} – ${match.opponentChips ?? "?"}</span>
@@ -172,10 +174,12 @@ function detailsHtml(match) {
   }
   const hands = (match.hands || []).map(function (h) {
     const won = h.won === "me" ? `<span class="w">Won</span>` : h.won === "opponent" ? `<span class="l">Lost</span>` : "Split";
-    // No poker hands shown = someone folded before the showdown
-    const how = h.myHand || h.opponentHand
-      ? `${escapeHtml(h.myHand || "?")} vs ${escapeHtml(h.opponentHand || "?")}`
-      : `<span class="dim">by fold</span>`;
+    // No poker hands shown = someone folded, or a card ended the match (e.g. Windfall)
+    const how = h.result === "Game over"
+      ? `<span class="dim">match ended by a card effect</span>`
+      : h.myHand || h.opponentHand
+        ? `${escapeHtml(h.myHand || "?")} vs ${escapeHtml(h.opponentHand || "?")}`
+        : `<span class="dim">by fold</span>`;
     return `<p class="hand-line">${escapeHtml(h.hand)}: ${won} · ${how}</p>`;
   }).join("") || `<p class="dim small">No hands recorded</p>`;
 

@@ -29,7 +29,7 @@ service cloud.firestore {
     // Document name: <game id>_<player name in lower case>, so the same match is only stored once.
     function validSighting() {
       let d = request.resource.data;
-      return d.keys().hasOnly(["gameId", "name", "nameKey", "classes", "classKey", "cards", "playedAt", "savedAt", "by", "tournament"])
+      return d.keys().hasOnly(["gameId", "name", "nameKey", "classes", "classKey", "cards", "playedAt", "savedAt", "by", "tournament", "rank", "bot"])
         && d.by == request.auth.uid                      // you can only add sightings as yourself
         && d.gameId is string && d.gameId.size() <= 64
         && d.savedAt == request.time                     // saved "now" (by the server's clock)
@@ -40,7 +40,10 @@ service cloud.firestore {
         && d.cards is map && d.cards.size() <= 40
         && d.playedAt is int
         // optional: the tournament it was played in (tournament mode in the tracker)
-        && (!("tournament" in d) || (d.tournament is string && d.tournament.size() <= 60));
+        && (!("tournament" in d) || (d.tournament is string && d.tournament.size() <= 60))
+        // optional: the player's rank (0-40) and whether they're a bot
+        && (!("rank" in d) || (d.rank is int && d.rank >= 0 && d.rank <= 100))
+        && (!("bot" in d) || d.bot is bool);
     }
 
     match /showdown_sightings/{sightingId} {

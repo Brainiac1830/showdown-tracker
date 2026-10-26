@@ -33,7 +33,8 @@ def appearances(record):
     else:
         players = [{"name": record.get("opponent"), "classes": record.get("opponentClasses"),
                     "cards": record.get("opponentCards") or {},
-                    "discarded": record.get("opponentDiscarded") or {}}]
+                    "discarded": record.get("opponentDiscarded") or {},
+                    "rank": record.get("opponentRank"), "bot": record.get("opponentBot")}]
     for p in players:
         # no name yet (left before the game showed it) = can't be used for anyone's profile
         if not p.get("name") or p.get("name") in ("?", "P1", "P2"):
@@ -45,7 +46,8 @@ def appearances(record):
         seen = Counter(p.get("cards") or {}) + Counter(p.get("discarded") or {})
         yield {"name": p["name"], "classes": p.get("classes") or [], "cards": dict(seen),
                "playedAt": record.get("playedAt") or 0, "gameId": record.get("gameId"),
-               "tournament": record.get("tournament") or ""}
+               "tournament": record.get("tournament") or "",
+               "rank": p.get("rank"), "bot": bool(p.get("bot"))}
 
 
 def all_appearances(records, sightings=()):

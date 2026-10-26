@@ -92,6 +92,16 @@ function render(matches) {
 
 
 // ---------- Start ----------
+let myMatches = [];
+const hideBots = setupHideBots("hide-bots", function () { show(); });
+
+function show() {
+  const shown = myMatches.filter(function (m) { return !(hideBots() && isBotMatch(m)); });
+  pageStatus.textContent = shown.length ? "" : "Only bot matches so far: untick \"Hide bot matches\" to see them.";
+  render(shown);
+  content.classList.remove("hidden");      // (keeps the switch visible)
+}
+
 watchUser(async function (user) {
   if (!user) {
     content.classList.add("hidden");
@@ -101,14 +111,12 @@ watchUser(async function (user) {
   pageStatus.textContent = "Loading your matches...";
   try {
     // Spectated matches are other people's games: they're on the Players page, not in my stats
-    const matches = (await loadMatches()).filter(function (m) { return !m.spectated; });
-    if (matches.length === 0) {
+    myMatches = (await loadMatches()).filter(function (m) { return !m.spectated; });
+    if (myMatches.length === 0) {
       pageStatus.textContent = "No matches yet. Play a match with the tracker running and your stats appear here.";
       return;
     }
-    pageStatus.textContent = "";
-    render(matches);
-    content.classList.remove("hidden");
+    show();
   } catch (error) {
     pageStatus.textContent = "Couldn't load your matches: " + error.message;
     console.error(error);

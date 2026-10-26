@@ -18,6 +18,7 @@ const playerSearch = document.getElementById("player-search");
 const listBox      = document.getElementById("player-list");
 
 let players = [];     // one entry per player, see buildPlayers()
+const hideBots = setupHideBots("hide-bots", function () { render(); });
 
 
 // ---------- 1. FROM MATCHES TO PLAYERS ----------
@@ -37,6 +38,7 @@ function buildPlayers(matches, sightings) {
     if (s.name && !all[id] && !tooLittle) {
       // shared by someone else: no result, not "mine"
       all[id] = { name: s.name, classes: s.classes || [], cards: s.cards || {}, generated: {},
+                  rank: s.rank, bot: !!s.bot,
                   shared: true, match: { gameId: s.gameId, playedAt: s.playedAt || 0, spectated: true } };
     }
   }
@@ -57,6 +59,10 @@ function buildPlayers(matches, sightings) {
     p.seen.sort(function (a, b) { return b.match.playedAt - a.match.playedAt; });   // newest first
     p.name = p.seen[0].name;                       // the newest spelling of the name
     p.lastSeen = p.seen[0].match.playedAt;
+    // newest known rank, and whether they're a bot (any match where the game sent "0" as text)
+    const ranked = p.seen.find(function (a) { return typeof a.rank === "number" && !a.bot; });
+    p.rank = ranked ? ranked.rank : null;
+    p.bot = p.seen.some(function (a) { return a.bot; });
     const mine = p.seen.filter(function (a) { return !a.match.spectated; });
     p.wins = mine.filter(function (a) { return a.match.result === "win"; }).length;
     p.losses = mine.filter(function (a) { return a.match.result === "loss"; }).length;
@@ -88,7 +94,9 @@ function likelyCards(seen) {
 
 function render() {
   const text = playerSearch.value.trim().toLowerCase();
-  const shown = players.filter(function (p) { return p.name.toLowerCase().includes(text); });
+  const shown = players.filter(function (p) {
+    return p.name.toLowerCase().includes(text) && !(hideBots() && p.bot);
+  });
   listBox.innerHTML = "";
   if (players.length === 0) {
     listBox.innerHTML = `<p class="page-status">No players yet. Play or spectate a match with the tracker running.</p>`;
@@ -124,7 +132,7 @@ function createRow(p) {
 
   row.innerHTML = `
     <div class="match-main player-main">
-      <span class="match-name">${escapeHtml(p.name)}</span>
+      <span class="match-name">${escapeHtml(p.name)}${rankBadge(p.rank, p.bot)}</span>
       <span class="small">${pairTags}</span>
       <span class="small" title="My record against them">${record}${p.watched ? ` <span class="dim">· watched ${p.watched}</span>` : ""}${p.shared ? ` <span class="dim" title="Matches other players' trackers shared">· +${p.shared} shared</span>` : ""}</span>
       <span class="match-date dim small">${formatDate(p.lastSeen)}</span>

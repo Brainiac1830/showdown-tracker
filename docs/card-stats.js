@@ -33,6 +33,7 @@ let matches = [];
 let mode = "hand";           // "hand" or "game"
 let scope = "me";            // "me" or "all"
 let withGenerated = false;   // count generated copies too
+const hideBots = setupHideBots("hide-bots", function () { render(); });
 let versions = {};           // match id -> "Theory Craft v2"
 
 
@@ -115,7 +116,7 @@ function playersOf(match) {
 function samples() {
   const list = [];
   for (const m of matches) {
-    if (!deckOk(m)) {
+    if (!deckOk(m) || (hideBots() && isBotMatch(m))) {
       continue;
     }
     // whose plays count: me only, or everyone

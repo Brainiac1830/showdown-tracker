@@ -25,6 +25,7 @@ import time
 from datetime import datetime
 from collections import Counter
 
+import ranks
 from cards import GENERATORS, card_info, max_copies
 
 
@@ -95,6 +96,16 @@ class Game:
         # shows them to both players. Not "played" (no win rate), but they ARE in that deck.
         self.discarded = {"P1": Counter(), "P2": Counter()}
         self._pending_discards = []       # (player, card id) waiting for the batch to finish
+        # Deck cards STOLEN from a player (Thought Police, Fatal Fortune, Debt Collector, Inspection):
+        # {"P2": Counter({card_id: n})} = cards taken from P2. They ARE in P2's deck (like discards),
+        # and they are NOT the thief's deck cards, so the thief's play of them isn't counted as "played".
+        self.stolen = {"P1": Counter(), "P2": Counter()}
+        self.stolen_ids = {}              # card id -> the player it was stolen from
+        self._pending_steals = []         # (thief, victim, card id) waiting for the batch to finish
+        # Stolen cards the thief still holds: {"P1": [{"from": "P2", "card": "favoritism" or None,
+        # "id": card id}]}. Needed because the game gives hidden cards new ids, so we can't always
+        # follow the stolen card until it's played.
+        self.steal_pool = {"P1": [], "P2": []}
         # Card ids the game showed with the lighter "generated" border (AnimateCard "generatedCard")
         self.marked_generated = set()
         self.opp_pool = []                # generated cards the opponent holds: [[generator ids], ...]
@@ -109,6 +120,8 @@ class Game:
         self.hand_results = []            # one entry per poker hand (from "EndHand")
         self.chips_now = {}               # {"P1": 48, "P2": 0}: chips after the last hand (AnimatePlayer setChips)
         self._log_hand = None             # hand number of the newest game log entry (1, 2, ...)
+        self._chips_after_pending = []    # hand results waiting for this update's final chips
+        self.ranks = {}                   # {"P1": 40, "P2": "0"}: rank exactly as the game sent it (see ranks.py)
         self._snapshot_read = False
         self.ended = False
         self.end_reason = None            # plain-English reason we think it ended
@@ -271,6 +284,10 @@ class Game:
                 # e.g. {"PlayerId": "P2", "DeckClasses": ["Protector", "Rebel"]}
                 self.deck_classes[data.get("PlayerId")] = data.get("DeckClasses") or []
 
+            elif kind == "SetPlayerRank":
+                # {"PlayerId": "P2", "Rank": 14}  (a bot: "Rank": "0", as text)
+                self.ranks[data.get("PlayerId")] = data.get("Rank")
+
             elif kind == "SetGameLogItems":
                 # The whole log so far (in the snapshot). Same entries as AddGameLogItem.
                 for item in data.get("Items") or []:
@@ -335,13 +352,14 @@ class Game:
                 result = {
                     "hand": self.hand_number,
                     "handNo": self._log_hand,                 # to match the cards played in this hand
-                    "chipsBefore": dict(self.chips_now),      # chips before this hand's result
+                    "chipsAfter": None,                       # filled at the end of this update
                     "winner": winner,
                     "result": info.get("HandResult"),
                     "myHand": info.get(f"{me}CombinationName"),
                     "opponentHand": info.get(f"{opp}CombinationName"),
                 }
                 self.hand_results.append(result)
+                self._chips_after_pending.append(result)
                 who = self.name(winner) if winner in ("P1", "P2") else "Nobody"
                 self.say(f"[{self.hand_number}] {who} wins the hand "
                          f"({result['myHand']} vs {result['opponentHand']})")
@@ -350,6 +368,16 @@ class Game:
                 winner = data.get("WinnerId")
                 if winner in ("P1", "P2"):
                     self.winner = winner
+                # A card (e.g. Windfall) can push someone past 100 chips in the middle of a
+                # hand: the game then ends WITHOUT a hand result. Count that hand as won by the
+                # match winner, so the cards played in it still count.
+                if self._log_hand and not any(h.get("handNo") == self._log_hand for h in self.hand_results):
+                    result = {"hand": self.hand_number, "handNo": self._log_hand, "chipsAfter": None,
+                              "winner": winner, "result": "Game over", "myHand": "", "opponentHand": ""}
+                    self.hand_results.append(result)
+                    self._chips_after_pending.append(result)
+                    self.say(f"[{self.hand_number}] The match ended during the hand (card effect): "
+                             f"{self.name(winner)} wins it")
                 if not self.ended:
                     self.end(data.get("ExtraText") or f"winner {winner}")
 
@@ -377,7 +405,12 @@ class Game:
         if self.starting_hand and not self.starting_hand_done:
             self.starting_hand_done = True
             self.say(f"Starting hand: {', '.join(self.starting_hand)}")
+        # chips after the hands that ended in this update (the setChips come after EndHand)
+        for result in self._chips_after_pending:
+            result["chipsAfter"] = dict(self.chips_now)
+        self._chips_after_pending = []
         self._resolve_discards()
+        self._resolve_steals()
         self.infer_classes()
         self.pick_deck()
         self.version += 1
@@ -395,9 +428,58 @@ class Game:
             self.say(f"[{self.hand_number}] {self.name(pid)} discarded {card_info(card_id)['name']}")
         self._pending_discards = []
 
+    def _resolve_steals(self):
+        """At the end of each update: name the cards stolen in it (when the thief is me,
+        the game shows me the card; when spectating or when I'm robbed from my deck, it
+        often stays hidden until it's played)."""
+        for thief, victim, cid in self._pending_steals:
+            if cid in self.marked_generated:
+                continue               # a generated card was stolen: not a deck card of anyone
+            card_id = self.card_def.get(cid)
+            self.steal_pool[thief].append({"from": victim, "card": card_id, "id": cid})
+            if card_id:
+                self.stolen[victim][card_id] += 1
+                what = card_info(card_id)["name"]
+            else:
+                what = "a hidden card"
+            self.say(f"[{self.hand_number}] {self.name(thief)} stole {what} from {self.name(victim)}")
+        self._pending_steals = []
+
+    def _stolen_play(self, card, info, owner):
+        """Is this played card one the player stole? Returns the player it was stolen
+        from, or None. Tried in order:
+          1. the same card id we saw being stolen (works when I'm the thief)
+          2. a stolen card of that name still in their hand
+          3. a stolen card we couldn't name, and this card isn't from their 2 classes
+          4. no steal seen (e.g. the tracker started late), but the card is from the
+             OPPONENT's classes and not from theirs: it can only be stolen"""
+        pool = self.steal_pool.get(owner)
+        if pool is None:
+            return None
+        ids = {card.get("LiveViewId"), card.get("ViewId")} - {None}
+        classes = self.deck_classes.get(owner) or []
+        off_class = bool(classes) and info.get("class") not in classes
+        for test in (lambda s: s["id"] in ids,
+                     lambda s: s["card"] == info["id"],
+                     lambda s: s["card"] is None and off_class):
+            for s in pool:
+                if test(s):
+                    pool.remove(s)
+                    if s["card"] is None:            # now we know what it was
+                        self.stolen[s["from"]][info["id"]] += 1
+                    elif s["card"] != info["id"]:    # (shouldn't happen) fix the name
+                        self.stolen[s["from"]][s["card"]] -= 1
+                        self.stolen[s["from"]][info["id"]] += 1
+                    return s["from"]
+        victim = other_player(owner)
+        if off_class and info.get("class") in (self.deck_classes.get(victim) or []):
+            self.stolen[victim][info["id"]] += 1
+            return victim
+        return None
+
     def seen(self, pid):
-        """Deck cards seen from this player this match: played + discarded."""
-        return self.played[pid] + self.discarded[pid]
+        """Deck cards seen from this player this match: played + discarded + stolen from them."""
+        return self.played[pid] + self.discarded[pid] + self.stolen[pid]
 
     def infer_classes(self):
         """The classes are only sent at the start of a match (snapshot). If we missed it
@@ -418,6 +500,15 @@ class Game:
         for cid in ids:
             before = self.card_loc.get(cid, "")
             self.card_loc[cid] = loc
+            # From one player's deck or hand into the OTHER player's hand = stolen
+            # (e.g. Thought Police: "P2_ActionsDeck" -> "P1_Hand")
+            src, dst = before.split("_")[0], loc.split("_")[0]
+            if src in ("P1", "P2") and dst in ("P1", "P2") and src != dst and loc.endswith("_Hand") \
+                    and before.endswith(("_ActionsDeck", "_Hand")) and not self._reading_snapshot:
+                self.stolen_ids[cid] = src
+                self._pending_steals.append((dst, src, cid))
+                if dst == opp:
+                    self._batch_drawn += 1    # arrived in their hand, but not generated
             if opp and before == f"{opp}_Hand" and loc != before:
                 self._batch_left += 1
             if opp and before == f"{opp}_ActionsDeck" and loc == f"{opp}_Hand":
@@ -475,7 +566,7 @@ class Game:
             extra -= 1
             # fix the most recent matching play in the list
             for play in reversed(self.plays):
-                if play["player"] == pid and play["cardId"] == card_id and play["generated"] is not True:
+                if play["player"] == pid and play["cardId"] == card_id and play["generated"] is not True                         and not play.get("stolenFrom"):
                     play["generated"] = True
                     break
             self.say(f"Backcheck: {self.name(pid)} played more {info['name']} than a deck can hold "
@@ -570,15 +661,19 @@ class Game:
                 info = card_info(card.get("DefinitionId"), card.get("Name"))
                 owner = pid if pid in ("P1", "P2") else card.get("OwnerId")
                 made, why = self._is_generated(card, info, owner)
-                if owner in self.played:
+                # A stolen card: it belongs to the other player's deck (counted in
+                # self.stolen for them), so it isn't one of the thief's played deck cards
+                victim = None if made else self._stolen_play(card, info, owner)
+                if owner in self.played and not victim:
                     (self.generated if made else self.played)[owner][info["id"]] += 1
                 if made and owner == self.opponent() and self.opp_pool:
                     self.opp_pool.pop(0)   # one less generated card in their hand
                 if owner == self.me and len(self.saved_decks) > 1:
                     self.pick_deck()   # a played card can settle a tie between decks
                 self.plays.append({"hand": hand, "stage": stage, "player": owner, "card": info["name"],
-                                   "cardId": info["id"], "generated": made})
-                extra = f"  (generated: {why})" if made else ""
+                                   "cardId": info["id"], "generated": made, "stolenFrom": victim})
+                extra = f"  (generated: {why})" if made else \
+                        f"  (stolen from {self.name(victim)})" if victim else ""
                 self.say(f"{where} {self.name(owner)} played {info['name']}{extra}")
                 if owner in self.played:
                     self._backcheck_copies(owner, info["id"])
@@ -667,6 +762,8 @@ class Game:
             "myGeneratedPlayed": by_name(self.generated[self.me]) if self.me else {},
             "opponentCardsPlayed": by_name(self.played[opp]) if opp else {},
             "opponentGeneratedPlayed": by_name(self.generated[opp]) if opp else {},
+            "stolenFromMe": by_name(self.stolen[self.me]) if self.me else {},
+            "stolenFromOpponent": by_name(self.stolen[opp]) if opp else {},
             "plays": [dict(p, playerName=self.name(p["player"])) for p in self.plays],
         }
 
@@ -690,17 +787,22 @@ class Game:
             "opponentChips": self.chips.get(opp, 0),
             "hands": [{"hand": h["hand"] or "",
                        "won": "me" if h["winner"] == me else "opponent" if h["winner"] == opp else "split",
-                       "myHand": h["myHand"] or "", "opponentHand": h["opponentHand"] or ""}
+                       "myHand": h["myHand"] or "", "opponentHand": h["opponentHand"] or "",
+                       "result": h.get("result") or ""}
                       for h in self.hand_results],
             "startingHand": [card_info(None, name)["id"] for name in self.starting_hand],
             "myCards": dict(self.played[me]),
             "myGenerated": dict(self.generated[me]),
             "opponentCards": dict(self.played[opp]),
             "opponentGenerated": dict(self.generated[opp]),
-            "opponentDiscarded": dict(self.discarded[opp]),     # deck cards they discarded (not played)
+            # deck cards seen but not played: discarded, or stolen from them (e.g. by my Thought Police)
+            "opponentDiscarded": dict(self.discarded[opp] + self.stolen[opp]),
             "tournament": self.tournament or "",
             "leftEarly": not self.ended,                # left before the end: no result
             "me": me or "",                             # which player I was (for handLog)
+            "myRank": ranks.points(self.ranks.get(me)),             # 0-40 (see ranks.py), None if unknown
+            "opponentRank": ranks.points(self.ranks.get(opp)),
+            "opponentBot": ranks.is_bot(self.ranks.get(opp)),       # rank sent as text "0" = a bot
             "deckCards": dict(self.deck),               # my exact deck list: the website numbers versions
             "handLog": self.hand_log(),
         }
@@ -708,7 +810,7 @@ class Game:
     def hand_log(self):
         """Hand by hand: who won, the cards each player played in it (generated ones
         apart) and the chips each player won or lost. Used for card win rates.
-          [{"hand": 3, "winner": "P1" / "P2" / "split", "result": "Wins" / "Folds" / "Split",
+          [{"hand": 3, "winner": "P1" / "P2" / "split", "result": "Wins" / "Folds" / "Split" / "Game over",
             "cards": {"P1": {card id: n}, "P2": {...}}, "generated": {"P1": {...}, "P2": {...}},
             "chips": {"P1": +20, "P2": -20}}, ...]
         Only hands with a known result (when joining midway, earlier hands have none)."""
@@ -719,14 +821,19 @@ class Game:
             cards = {"P1": {}, "P2": {}}
             made = {"P1": {}, "P2": {}}
             for play in self.plays:
-                if play["hand"] == h["handNo"] and play["player"] in cards:
+                # (stolen cards are left out: not the deck cards of the player who played them)
+                if play["hand"] == h["handNo"] and play["player"] in cards and not play.get("stolenFrom"):
                     bucket = made if play["generated"] is True else cards
                     bucket[play["player"]][play["cardId"]] = bucket[play["player"]].get(play["cardId"], 0) + 1
-            # chips after this hand = chips before the next one (or the final chips)
-            after = self.hand_results[i + 1].get("chipsBefore") if i + 1 < len(self.hand_results) else self.chips_now
-            before = h.get("chipsBefore") or {}
-            chips = {p: (after or {}).get(p, 0) - before.get(p, 0) for p in ("P1", "P2")} \
-                if before and after else {}
+            # chip change = chips after this hand - chips after the previous one (so a card's
+            # chips, e.g. Windfall, count in the hand it was played). Hand 1 starts at 0-0.
+            after = h.get("chipsAfter")
+            prev = self.hand_results[i - 1] if i > 0 else None
+            if prev and prev.get("handNo") == h["handNo"] - 1:
+                before = prev.get("chipsAfter")
+            else:
+                before = {"P1": 0, "P2": 0} if h["handNo"] == 1 else None
+            chips = {p: after.get(p, 0) - before.get(p, 0) for p in ("P1", "P2")} if before and after else {}
             log.append({"hand": h["handNo"], "winner": h["winner"] if h["winner"] in ("P1", "P2") else "split",
                         "result": h.get("result") or "", "cards": cards, "generated": made, "chips": chips})
         return log
@@ -736,7 +843,8 @@ class Game:
         def player(pid):
             return {"name": self.names.get(pid) or "", "classes": self.deck_classes.get(pid, []),
                     "chips": self.chips.get(pid, 0), "cards": dict(self.played[pid]),
-                    "generated": dict(self.generated[pid]), "discarded": dict(self.discarded[pid])}
+                    "generated": dict(self.generated[pid]), "discarded": dict(self.discarded[pid] + self.stolen[pid]),
+                    "rank": ranks.points(self.ranks.get(pid)), "bot": ranks.is_bot(self.ranks.get(pid))}
         # EndHand results are stored as "my" = P1 and "opponent" = P2 when nobody is "me"
         return {
             "gameId": self.game_id,

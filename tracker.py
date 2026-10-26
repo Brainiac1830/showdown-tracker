@@ -56,7 +56,9 @@ SYNC_EVERY = 120
 # from their raw.jsonl, the next time the tracker starts. History:
 #   1 = before 2026-10-25 evening
 #   2 = hand log + deck list (Cards page), discarded cards, classes worked out from cards
-DATA_VERSION = 2
+#   3 = ranks + bot flag, hands ended by a card (Windfall), chips per hand measured after each hand
+#   4 = stolen cards (Thought Police...) count in the victim's deck, not as the thief's plays
+DATA_VERSION = 4
 DATA_STATE_FILE = SAVE_FOLDER / "data_version.json"
 SHOW_OVERLAY = True
 # Save each finished match to your website by itself (needs tracker_key.txt, see website.py)

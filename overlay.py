@@ -30,6 +30,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
+import ranks
 from cards import STAGES, card_info
 
 HERE = Path(__file__).resolve().parent
@@ -132,6 +133,17 @@ def fit(d, text, fnt, width):
     return text.rstrip() + "…"
 
 
+def star(d, cx, cy, r, fill):
+    """A 5-pointed star (for rank stars: the font has no ★)."""
+    import math
+    points = []
+    for k in range(10):
+        radius = r if k % 2 == 0 else r * 0.45
+        angle = math.pi / 2 + k * math.pi / 5
+        points.append((cx + radius * math.cos(angle), cy - radius * math.sin(angle)))
+    d.polygon(points, fill=fill)
+
+
 def sparkle(d, cx, cy, r, fill):
     """A 4-pointed star: the mark for generated cards."""
     k = r * 0.3
@@ -224,8 +236,13 @@ def title_bar(d, text, colour=TEXT, trophy_button=None, tournament=None, right=N
     d.rectangle([0, 0, WIDTH, BAR], fill=PANEL)
     end = WIDTH - (46 if trophy_button is not None else 26)        # room before the buttons
     if right:
-        end -= d.textlength(right, font=MID) + 6
-        d.text((end + 4, 4), right, font=MID, fill=right_colour)
+        # the font has no ★, so a trailing star is drawn as a small shape
+        has_star = right.endswith("★")
+        words = right.rstrip("★")
+        end -= d.textlength(words, font=MID) + 6 + (10 if has_star else 0)
+        d.text((end + 4, 4), words, font=MID, fill=right_colour)
+        if has_star:
+            star(d, end + 4 + d.textlength(words, font=MID) + 5, 10, 4.5, right_colour)
     title = fit(d, text, BIG, end - 8)
     d.text((6, 3), title, font=BIG, fill=colour)
     if tournament:
@@ -306,6 +323,9 @@ def render_my_side(game, tournament=None, trophy_on=None):
         word = {"win": "VICTORY", "loss": "DEFEAT"}.get(game.result_word(), "MATCH OVER")
         y = result_banner(d, y, word, {"win": GREEN, "loss": LOSS}.get(game.result_word(), GOLD))
         y = online_status(d, y, game)
+        # Match over: only the result, no deck list (less clutter between matches).
+        # The full list comes back as soon as the next match starts.
+        return img.crop((0, 0, WIDTH, y + 4)), zones
 
     if me and game.deck:
         groups = group_by_stage(game.deck)
@@ -357,20 +377,29 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
         d.text((6, y), "Waiting for a match...", font=SMALL, fill=DIM)
         return img.crop((0, 0, WIDTH, y + 16)), zones
 
-    # Top bar: NAME · tournament, and WON / LOST when a watched match is over
-    right = None
+    # Top bar: NAME · tournament, and on the right their rank ("Silver 4★", or BOT in red),
+    # or WON / LOST when a watched match is over
+    right, right_colour = ranks.label(game.ranks.get(pid))
     if game.spectating and game.ended:
         right = "WON" if game.winner == pid else "LOST"
+        right_colour = GREEN if right == "WON" else LOSS
     y = title_bar(d, game.name(pid).upper(), OPP, trophy_state, tournament,
-                  right=right, right_colour=GREEN if right == "WON" else LOSS)
+                  right=right, right_colour=right_colour or DIM)
     if game.spectating and game.ended and pid == "P1":
         y = online_status(d, y, game)
+    if game.ended:
+        # Match over: just the name bar (the cards come back when the next match starts)
+        if warning:
+            d.text((6, y), fit(d, warning, SMALL, WIDTH - 12), font=SMALL, fill=LOSS)
+            y += 13
+        return img.crop((0, 0, WIDTH, y + 4)), zones
 
     # ----- this match -----
     known = {}
     if not tournament:
-        # ----- this match: what they played (count = times) -----
-        y = played_sections(img, d, y, game.played[pid])
+        # ----- this match: what they played (count = times), plus the cards stolen
+        # from them (e.g. by my Thought Police): those are in their deck too -----
+        y = played_sections(img, d, y, game.played[pid] + game.stolen[pid])
     else:
         # ----- tournament: ONE list. Decks are locked, so every card played this match
         # is in their deck too: known deck + new cards from this match.
@@ -410,7 +439,7 @@ def render_player(game, pid, prediction, show_prediction, waiting_text="Opponent
         d.text((WIDTH - 6 - d.textlength("hide", font=SMALL), top + 5), "hide", font=SMALL, fill=DIM)
         # Leave out cards they already played this match as often as ever before,
         # and cards already in the TOURNAMENT DECK above (those are certain)
-        played_now = game.played[pid]
+        played_now = game.played[pid] + game.stolen[pid]
         rows = [c for c in prediction["cards"] if played_now[c["id"]] < c["most"] and c["id"] not in known]
         shown = rows[:MAX_PREDICTED]
         groups = {}

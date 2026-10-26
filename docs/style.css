@@ -468,6 +468,29 @@ code {
 .card-table .card-cell .card-bar { margin: 0; }
 .card-table tr.low-data td { opacity: 0.45; }     /* too few hands to trust */
 
+/* ---------- Ranks and bots ---------- */
+.rank-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: bold;
+  padding: 0 5px;
+  margin-left: 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.rank-badge.bot { color: var(--loss); border-color: var(--loss); }
+
+.bot-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
 /* ---------- Small screens (phone) ---------- */
 @media (max-width: 700px) {
   .match-main {

@@ -43,6 +43,51 @@ function classTags(classes) {
 }
 
 
+// ---------- Ranks (same as ranks.py) ----------
+// 0-9 Bronze, 10-19 Silver, 20-29 Gold, 30-39 Diamond (stars = number - start), 40 Elite.
+// Bots: the game sends their rank as the text "0" (saved as bot: true).
+const RANK_TIERS = [[0, "Bronze", "#be7850"], [10, "Silver", "#bec6cd"], [20, "Gold", "#d7b446"],
+                    [30, "Diamond", "#aa82e6"], [40, "Elite", "#96dceb"]];
+
+function rankBadge(rank, bot) {
+  if (bot) {
+    return `<span class="rank-badge bot" title="A bot (its rank is sent as text &quot;0&quot;)">BOT</span>`;
+  }
+  if (typeof rank !== "number") {
+    return "";
+  }
+  for (let i = RANK_TIERS.length - 1; i >= 0; i--) {
+    const [start, name, colour] = RANK_TIERS[i];
+    if (rank >= start) {
+      const text = name === "Elite" ? "Elite" : `${name} ${rank - start}★`;
+      return `<span class="rank-badge" style="color: ${colour}; border-color: ${colour}">${text}</span>`;
+    }
+  }
+  return "";
+}
+
+// A match against a bot (watched matches: either player is a bot)
+function isBotMatch(match) {
+  return match.spectated
+    ? (match.players || []).some(function (p) { return p.bot; })
+    : !!match.opponentBot;
+}
+
+// The "Hide bot matches" switch: on by default, remembered in this browser.
+// setupHideBots("hide-bots", render) wires a checkbox and returns a function giving its state.
+function setupHideBots(checkboxId, onChange) {
+  const box = document.getElementById(checkboxId);
+  let saved = null;
+  try { saved = localStorage.getItem("showdown-hide-bots"); } catch (e) { /* blocked: default */ }
+  box.checked = saved !== "no";
+  box.addEventListener("change", function () {
+    try { localStorage.setItem("showdown-hide-bots", box.checked ? "yes" : "no"); } catch (e) { /* fine */ }
+    onChange();
+  });
+  return function () { return box.checked; };
+}
+
+
 // ---------- Players seen in a match (same idea as profiles.py) ----------
 
 // "Protector / Rebel": classes sorted, so the order doesn't matter
@@ -56,7 +101,8 @@ function appearances(match) {
   const players = match.spectated
     ? (match.players || [])
     : [{ name: match.opponent, classes: match.opponentClasses, cards: match.opponentCards,
-         generated: match.opponentGenerated, discarded: match.opponentDiscarded }];
+         generated: match.opponentGenerated, discarded: match.opponentDiscarded,
+         rank: match.opponentRank, bot: match.opponentBot }];
   return players
     // no name yet, or unknown classes with almost nothing seen (left right away): not worth showing
     .filter(function (p) {
@@ -69,7 +115,8 @@ function appearances(match) {
       for (const [id, n] of Object.entries(p.discarded || {})) {
         seen[id] = (seen[id] || 0) + n;
       }
-      return { name: p.name, classes: p.classes || [], cards: seen, generated: p.generated || {}, match: match };
+      return { name: p.name, classes: p.classes || [], cards: seen, generated: p.generated || {}, match: match,
+               rank: p.rank, bot: !!p.bot };
     });
 }
 

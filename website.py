@@ -194,7 +194,7 @@ def save_match(record, replace=False):
 # What we saw other players play, shared with everyone who uses the site:
 #   showdown_sightings/<game id>_<player name>  =
 #   {gameId, name, nameKey, classes, classKey, cards: {card id: times}, playedAt, savedAt, by,
-#    tournament (only in tournament mode)}
+#    tournament (only in tournament mode), rank (0-40), bot (true/false)}
 # Only opponents (and both players of a spectated match): my own deck is never shared.
 # The rules (firestore.rules) let everyone read and add them. The one who added a
 # sighting can change it; anyone else only with a more complete one (more different
@@ -236,6 +236,9 @@ def share_sightings(record, replace=False):
         }
         if record.get("tournament"):
             fields["tournament"] = record["tournament"][:60]
+        if isinstance(a.get("rank"), int):
+            fields["rank"] = a["rank"]                  # 0-40, see ranks.py
+        fields["bot"] = bool(a.get("bot"))
         doc_id = sighting_id(record["gameId"], name)
         there = known.get(doc_id)
         if there is not None:
